@@ -92,7 +92,6 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-
                     <StackPanel Margin="0,10,0,0">
                         <ToggleButton Style="{StaticResource NavItem}"
                                       IsChecked="{Binding Page,
@@ -154,6 +153,32 @@
                             </Grid>
                         </ToggleButton>
 
+                        <!-- 收藏：独立页面，替代原先挤在侧边栏下方的紧凑列表 -->
+                        <ToggleButton Style="{StaticResource NavItem}"
+                                      IsChecked="{Binding Page,
+                                        Converter={StaticResource EnumEquals},
+                                        ConverterParameter=Favorites, Mode=OneWay}"
+                                      Command="{Binding NavigateCommand}"
+                                      CommandParameter="favorites">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource IconStar}" Width="16" Height="16"
+                                          Stretch="Uniform" VerticalAlignment="Center"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
+                                    <TextBlock Text="收藏" FontSize="13" Margin="12,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" CornerRadius="8"
+                                        Background="{StaticResource SurfaceTopBrush}"
+                                        Padding="6,1" VerticalAlignment="Center"
+                                        Visibility="{Binding HasFavorites, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Favorites.Count}" FontSize="10"
+                                               Foreground="{StaticResource TextMutedBrush}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+                        </ToggleButton>
+
                         <ToggleButton Style="{StaticResource NavItem}"
                                       IsChecked="{Binding Page,
                                         Converter={StaticResource EnumEquals},
@@ -189,6 +214,7 @@
                         </ToggleButton>
                     </StackPanel>
 
+
                     <Button Grid.Row="2" Style="{StaticResource IconButton}"
                             Command="{Binding OpenDirCommand}"
                             HorizontalAlignment="Left" Margin="14,0,0,14"
@@ -210,9 +236,143 @@
                 <!-- ================= 内容区 ================= -->
                 <Grid Grid.Column="1">
 
+                    <!-- ========== 收藏页 ========== -->
+                    <Grid Visibility="{Binding IsFavoritesPage, Converter={StaticResource BoolToVis}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 标题栏 -->
+                        <Grid Margin="34,24,34,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="收藏" Style="{StaticResource PageTitle}" />
+                                <TextBlock Text="常用的链接固定在这里，点一行即可载入并解析。可自定义名称，未命名的显示网址"
+                                           Style="{StaticResource MutedText}" Margin="0,7,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                <Button Style="{StaticResource GhostButton}"
+                                        Content="清空全部" FontSize="12" Padding="14,6"
+                                        Command="{Binding ClearAllFavoritesCommand}"
+                                        Visibility="{Binding HasFavorites, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource SlimScrollViewer}"
+                                      VerticalScrollBarVisibility="Auto" Margin="0,16,0,0">
+                            <StackPanel Margin="34,0,34,26" MaxWidth="760"
+                                        HorizontalAlignment="Center" Width="760">
+
+                                <!-- 空态 -->
+                                <Border Style="{StaticResource Card}" Padding="30"
+                                        Visibility="{Binding HasFavorites,
+                                          Converter={StaticResource InverseBoolToVis}}">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <Path Data="{StaticResource IconStar}" Width="30" Height="30"
+                                              Stretch="Uniform" HorizontalAlignment="Center"
+                                              Fill="{StaticResource TextDimBrush}" Opacity="0.5" />
+                                        <TextBlock Text="还没有收藏" FontSize="13" Margin="0,14,0,0"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{StaticResource TextBrush}" />
+                                        <TextBlock Text="解析出结果后，点结果卡片上的「收藏」就会出现在这里。"
+                                                   Style="{StaticResource CaptionText}"
+                                                   Margin="0,7,0,0" HorizontalAlignment="Center" />
+                                        <Button Style="{StaticResource GhostButton}" Content="去解析"
+                                                Margin="0,16,0,0" Padding="20,7" FontSize="12"
+                                                HorizontalAlignment="Center"
+                                                Command="{Binding NavigateCommand}"
+                                                CommandParameter="parse" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 列表：每行 = 名称 + 网址 + 操作 -->
+                                <ItemsControl ItemsSource="{Binding Favorites}"
+                                              Visibility="{Binding HasFavorites,
+                                                Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource Card}" Padding="16,13"
+                                                    Margin="0,0,0,10">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- 点这块载入（不是整行：右侧按钮在行内，整行可点会互相抢） -->
+                                                    <Button Grid.Column="0"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            HorizontalContentAlignment="Left"
+                                                            Cursor="Hand" Padding="0"
+                                                            Command="{Binding DataContext.UseFavoriteCommand,
+                                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="Transparent">
+                                                                    <ContentPresenter />
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                        <StackPanel>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding DisplayLabel}"
+                                                                           FontSize="13"
+                                                                           Foreground="{StaticResource TextBrush}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <!-- 有自定义名时标一下，让用户知道哪个是自己起的名 -->
+                                                                <Border Style="{StaticResource Badge}"
+                                                                        Margin="8,0,0,0" Padding="5,1.5"
+                                                                        Visibility="{Binding LabelCustom,
+                                                                          Converter={StaticResource BoolToVis}}">
+                                                                    <TextBlock Text="自定义" FontSize="9.5"
+                                                                               Foreground="{StaticResource TextMutedBrush}" />
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding RawInput}"
+                                                                       FontSize="10.5" Margin="0,4,0,0"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{StaticResource TextDimBrush}" />
+                                                        </StackPanel>
+                                                    </Button>
+
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                                VerticalAlignment="Center" Margin="14,0,0,0">
+                                                        <Button Style="{StaticResource SmallButton}"
+                                                                Content="载入" Padding="11,4"
+                                                                Command="{Binding DataContext.UseFavoriteCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                        <Button Style="{StaticResource SmallButton}"
+                                                                Content="重命名" Padding="11,4" Margin="6,0,0,0"
+                                                                Command="{Binding DataContext.RenameFavoriteCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                        <Button Style="{StaticResource SmallButton}"
+                                                                Content="删除" Padding="11,4" Margin="6,0,0,0"
+                                                                Command="{Binding DataContext.RemoveFavoriteCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
                     <!-- ========== 解析页 ========== -->
                     <Grid Visibility="{Binding IsParsePage, Converter={StaticResource BoolToVis}}">
-                        <ScrollViewer Style="{StaticResource SlimScrollViewer}"
+                        <ScrollViewer x:Name="ParseScrollViewer"
+                                      Style="{StaticResource SlimScrollViewer}"
                                       VerticalScrollBarVisibility="Auto"
                                       Margin="0,0,4,0">
                             <StackPanel Margin="34,26,34,26" MaxWidth="760"
@@ -318,7 +478,7 @@
                                                 <!-- 收藏 / 复制链接：命令早就写好了，但 XAML 里一直没绑定，
                                                      用户完全触达不到。 -->
                                                 <Button Style="{StaticResource GhostButton}"
-                                                        Content="收藏" FontSize="11.5" Padding="10,4"
+                                                        Content="{Binding FavoriteButtonText}" FontSize="11.5" Padding="10,4"
                                                         Margin="6,0,0,0"
                                                         Command="{Binding ToggleFavoriteCommand}" />
                                                 <Button Style="{StaticResource GhostButton}"
@@ -684,7 +844,158 @@
                                                     Command="{Binding LoadMoreCommand}"
                                                     Visibility="{Binding CanLoadMore,
                                                       Converter={StaticResource BoolToVis}}" />
+
+                                            <!--
+                                                列表底部再放一个「开始下载」。
+                                                原因：文件列表最多 240px、可滚动，但页面本身也长 ——
+                                                用户勾完选在列表底部，顶部那个「开始下载」已经滚出视野，
+                                                得手动滑回顶部才能开下。这里给一个"就地可用"的入口。
+                                                与顶部按钮绑同一个命令，行为完全一致。
+                                            -->
+                                            <Grid Margin="0,12,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Grid.Column="0" VerticalAlignment="Center"
+                                                           Style="{StaticResource CaptionText}"
+                                                           Text="{Binding AssetsSelectionText}" />
+
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <Button Style="{StaticResource GhostButton}"
+                                                            Content="回到顶部" FontSize="11.5" Padding="12,5"
+                                                            Command="{Binding ScrollParseToTopCommand}" />
+                                                    <Button Style="{StaticResource PrimaryButton}"
+                                                            Command="{Binding DownloadCommand}"
+                                                            Content="开始下载" FontSize="12"
+                                                            Padding="18,7" Margin="8,0,0,0" />
+                                                </StackPanel>
+                                            </Grid>
                                         </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!--
+                                    解析历史。
+                                    之前这套功能是"只写不读"：History 集合、搜索、复用、删除都有，
+                                    库也在写，但界面上一处绑定都没有 —— 用户完全看不到。
+                                    放在解析页（而不是单独开一页）是因为它的用途就是"把上次的链接再拿来用"。
+                                -->
+                                <Border Style="{StaticResource Card}" Padding="18" Margin="0,20,0,0">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="解析历史" FontSize="13" FontWeight="Medium" />
+                                                <TextBlock Text="{Binding History.Count, StringFormat={}({0})}"
+                                                           Style="{StaticResource CaptionText}"
+                                                           Margin="6,0,0,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="· 点一行即可载入（提取码一并带上）"
+                                                           Style="{StaticResource CaptionText}"
+                                                           Margin="8,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Style="{StaticResource CaptionButton}"
+                                                    Content="清空" VerticalAlignment="Center"
+                                                    Command="{Binding ClearHistoryCommand}"
+                                                    Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}" />
+                                        </Grid>
+
+                                        <!-- 搜索：历史多了以后必须能筛 -->
+                                        <TextBox Height="34" Margin="0,12,0,0"
+                                                 Text="{Binding HistoryKeyword, UpdateSourceTrigger=PropertyChanged}"
+                                                 Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
+                                            <TextBox.Resources>
+                                                <VisualBrush x:Key="Hint" x:Shared="False" AlignmentX="Left"
+                                                             Stretch="None">
+                                                    <VisualBrush.Visual>
+                                                        <TextBlock Text="搜索标题或链接…" Margin="13,0,0,0"
+                                                                   Foreground="{StaticResource TextDimBrush}"
+                                                                   FontSize="12" />
+                                                    </VisualBrush.Visual>
+                                                </VisualBrush>
+                                            </TextBox.Resources>
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource InputBox}">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="Text" Value="">
+                                                            <Setter Property="Background"
+                                                                    Value="{StaticResource Hint}" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+
+                                        <!-- 列表 -->
+                                        <ItemsControl ItemsSource="{Binding History}" Margin="0,10,0,0"
+                                                      MaxHeight="260"
+                                                      Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
+                                            <ItemsControl.Template>
+                                                <ControlTemplate TargetType="ItemsControl">
+                                                    <ScrollViewer Style="{StaticResource SlimScrollViewer}"
+                                                                  VerticalScrollBarVisibility="Auto">
+                                                        <ItemsPresenter />
+                                                    </ScrollViewer>
+                                                </ControlTemplate>
+                                            </ItemsControl.Template>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="Transparent" CornerRadius="5"
+                                                            Padding="8,7" Margin="0,1">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <Border Grid.Column="0" Style="{StaticResource Badge}"
+                                                                    VerticalAlignment="Center" Margin="0,0,9,0">
+                                                                <TextBlock Text="{Binding Kind}" FontSize="10" />
+                                                            </Border>
+
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Title}" FontSize="12.5"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock FontSize="10.5" Margin="0,2,0,0"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{StaticResource TextDimBrush}">
+                                                                    <Run Text="{Binding RawInput, Mode=OneWay}" />
+                                                                    <Run Text=" · " />
+                                                                    <Run Text="{Binding CreatedAt, StringFormat={}{0:MM-dd HH:mm}, Mode=OneWay}" />
+                                                                </TextBlock>
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                                        VerticalAlignment="Center">
+                                                                <!-- 载入：整个行都可以点，这里其实只是视觉提示 -->
+                                                                <Button Style="{StaticResource CaptionButton}"
+                                                                        Content="载入"
+                                                                        Command="{Binding DataContext.UseHistoryCommand,
+                                                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}" />
+                                                                <Button Style="{StaticResource CaptionButton}"
+                                                                        Content="删除" Margin="6,0,0,0"
+                                                                        Command="{Binding DataContext.DeleteHistoryCommand,
+                                                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <!-- 空态 -->
+                                        <TextBlock Text="{Binding HistoryEmptyText}"
+                                                   Style="{StaticResource CaptionText}"
+                                                   TextWrapping="Wrap" LineHeight="19" Margin="0,10,0,0"
+                                                   Visibility="{Binding HasHistory,
+                                                     Converter={StaticResource InverseBoolToVis}}" />
                                     </StackPanel>
                                 </Border>
 
@@ -1275,22 +1586,22 @@
                                         <Border Height="1" Background="{StaticResource BorderBrush}"
                                                 Margin="0,0,0,14" />
 
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="断点续传" IsChecked="{Binding ResumeEnabled}"
                                                   Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="慢连接抢占（慢连接断开重连提速）"
                                                   IsChecked="{Binding PreemptEnabled}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="分片级校验（首尾抽查，能发现写偏移错位）"
                                                   IsChecked="{Binding VerifyChunks}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="完成后计算 SHA-256（需完整读一遍文件，大文件较慢）"
                                                   IsChecked="{Binding VerifyHash}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="完成后自动打开所在目录"
                                                   IsChecked="{Binding OpenFolderWhenDone}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="完成时弹通知（窗口在后台才提示）"
                                                   IsChecked="{Binding NotifyOnComplete}" Margin="0,5" />
                                     </StackPanel>
@@ -1462,7 +1773,7 @@
                                         <Border Height="1" Background="{StaticResource BorderBrush}"
                                                 Margin="0,0,0,14" />
 
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="绕过 hosts 劫持（DoH 解析真实 IP）"
                                                   IsChecked="{Binding BypassHosts}" Margin="0,5" />
                                     </StackPanel>
@@ -1492,16 +1803,16 @@
                                            Margin="4,20,0,8" />
                                 <Border Style="{StaticResource Card}" Padding="18">
                                     <StackPanel>
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="诊断模式（6 模块分文件日志，300 行/秒限流）"
                                                   IsChecked="{Binding DiagnosticsEnabled}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="下载调试（按任务记录事件流）"
                                                   IsChecked="{Binding DownloadDebugEnabled}" Margin="0,5" />
                                         <Button Style="{StaticResource GhostButton}"
                                                 Content="导出诊断日志 (zip)" FontSize="12"
                                                 Command="{Binding ExportLogsCommand}"
-                                                HorizontalAlignment="Left" Margin="0,10,0,0" />
+                                                HorizontalAlignment="Right" Margin="0,10,0,0" />
                                     </StackPanel>
                                 </Border>
 
@@ -1561,23 +1872,36 @@
                                                      Text="{Binding MaxConcurrentTasks, UpdateSourceTrigger=PropertyChanged}" />
                                         </Grid>
 
+                                        <Grid Margin="0,0,0,12">
+                                            <StackPanel Margin="0,0,110,0">
+                                                <TextBlock Text="下载历史保留条数" FontSize="13" />
+                                                <TextBlock Text="已完成的任务会留在列表里方便回看；超出条数的从最旧的开始清掉。最小 1 条"
+                                                           Style="{StaticResource CaptionText}"
+                                                           TextWrapping="Wrap" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                            <TextBox Style="{StaticResource InputBox}" Width="92"
+                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                     TextAlignment="Center"
+                                                     Text="{Binding CompletedHistoryLimit, UpdateSourceTrigger=PropertyChanged}" />
+                                        </Grid>
+
                                         <Border Height="1" Background="{StaticResource BorderBrush}"
                                                 Margin="0,0,0,12" />
 
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="启用 HTTP/2（默认关闭，仅用 HTTP/1.1）"
                                                   IsChecked="{Binding EnableHttp2}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="下载期间阻止系统睡眠"
                                                   IsChecked="{Binding KeepAwake}" Margin="0,5" />
-                                        <CheckBox Style="{StaticResource FlatCheck}"
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
                                                   Content="检测剪贴板中的分享链接"
                                                   IsChecked="{Binding ClipboardWatch}" Margin="0,5" />
 
                                         <Button Style="{StaticResource GhostButton}"
                                                 Content="重置为默认值" FontSize="12"
                                                 Command="{Binding ResetTuningCommand}"
-                                                HorizontalAlignment="Left" Margin="0,10,0,0" />
+                                                HorizontalAlignment="Right" Margin="0,10,0,0" />
                                     </StackPanel>
                                 </Border>
 
@@ -1618,19 +1942,32 @@
                                     </StackPanel>
                                 </Border>
 
+                                <!--
+                                    保存按钮放右下角。
+                                    Windows 惯例里「提交/确认」类主操作在右下（或居中），
+                                    左下是"返回/取消"的位置 —— 放左下会让人下意识以为
+                                    那一侧是次要动作。
+                                -->
                                 <Button Style="{StaticResource PrimaryButton}"
                                         Command="{Binding SaveSettingsCommand}"
                                         Content="保存设置" Margin="0,20,0,0"
-                                        HorizontalAlignment="Left" MinWidth="120" />
+                                        HorizontalAlignment="Right" MinWidth="120" />
 
                                 <!--
                                     协议声明：AGPL 要求分发时让使用者知道自己的权利。
                                     放在设置页底部而不是弹窗里 —— 不打扰，但随时可查。
                                     版本号取自程序集，避免硬编码后忘记改。
                                 -->
+                                <!--
+                                    版权/版本号：居中放在页面最底部。
+                                    这是"说明性"信息而非操作项，居中收尾比左对齐更像个页脚，
+                                    也不会与上面的按钮（右对齐）抢视觉重心。
+                                -->
                                 <TextBlock Style="{StaticResource CaptionText}"
                                            TextWrapping="Wrap" LineHeight="18"
-                                           Margin="4,18,0,0"
+                                           Margin="0,18,0,0"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
                                            Text="{Binding AboutText}" />
                             </StackPanel>
                         </ScrollViewer>

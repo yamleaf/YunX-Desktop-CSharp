@@ -80,7 +80,7 @@ public sealed class SplashWindow : Window
             FontFamily = new FontFamily("Microsoft YaHei UI"),
         });
 
-        string version = typeof(SplashWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        string version = typeof(SplashWindow).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
         stack.Children.Add(new TextBlock
         {
             Text = $"v{version} · 高速下载器",

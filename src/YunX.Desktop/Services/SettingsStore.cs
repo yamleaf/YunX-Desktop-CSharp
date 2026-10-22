@@ -47,6 +47,20 @@ public sealed class AppSettings
     /// <summary>同时下载的任务数上限（原项目默认 1：前台任务吃满带宽，其余排队）。</summary>
     public int MaxConcurrentTasks { get; set; } = 1;
 
+    /// <summary>
+    /// 已完成任务在列表里保留多少条历史。
+    ///
+    /// <para><b>为什么不设 0 关闭</b>：0 会让"重启后空列表"重现，用户无法区分
+    /// 「没下过」和「记录丢了」。最小保留 1 条；想干净可以手动删任务。</para>
+    ///
+    /// <para>默认 100：足够看清最近下过什么，又不会让库无限增长。
+    /// 每条记录约 300 字节（含 payload），100 条约 30 KB。</para>
+    /// </summary>
+    public int CompletedHistoryLimit { get; set; } = 100;
+
+    /// <summary>侧边栏「收藏」区是否收起。记住用户的选择，避免每次启动都要再收一次。</summary>
+    public bool FavoritesCollapsed { get; set; }
+
     /// <summary>分片临时文件目录。空 = 与下载目录相同（放 SSD 上通常更快）。</summary>
     public string? CacheDir { get; set; }
 

@@ -13,7 +13,7 @@
     <!-- 应用图标：既作为 exe 图标，也是托盘图标的来源（TrayIcon.LoadAppIcon 从这里提取）。
          没有它时 exe 用 .NET 默认图标，托盘也会显示成一个没有辨识度的通用方块。 -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <!-- 自包含发布：目标机器无需安装 .NET 运行时，双击即用 -->
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -25,8 +25,8 @@
 
     <!-- 许可与版权：会写进 exe 的文件属性（右键 → 详细信息）。
          AGPL-3.0-or-later 与仓库根目录 LICENSE 一致。 -->
-    <Copyright>Copyright (C) 2026 yamleaf</Copyright>
-    <Company>yamleaf</Company>
+    <Copyright>Copyright (C) 2026 Lyaco</Copyright>
+    <Company>Lyaco</Company>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/tidain/YunX-Desktop</RepositoryUrl>
     <PackageProjectUrl>https://github.com/tidain/YunX-Desktop</PackageProjectUrl>

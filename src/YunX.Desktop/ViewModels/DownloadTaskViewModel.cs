@@ -125,6 +125,14 @@ public sealed class DownloadTaskViewModel : ObservableObject
 
     public long Size { get => _size; set { if (SetProperty(ref _size, value)) NotifyDerived(); } }
     public long Done { get => _done; set { if (SetProperty(ref _done, value)) NotifyDerived(); } }
+
+    /// <summary>
+    /// 上次写盘的时刻，用于节流（见 MainViewModel.PersistTask）。
+    ///
+    /// <para>放在 ViewModel 而不是集中在一个字典里：任务对象本来就跟着进度走，
+    /// 加一个字段比维护「TaskId → 时间戳」的映射更简单，也不会泄漏。</para>
+    /// </summary>
+    public DateTime LastPersistAt { get; set; } = DateTime.MinValue;
     public double Speed { get => _speed; set { if (SetProperty(ref _speed, value)) NotifyDerived(); } }
     /// <summary>
     /// 当前阶段文案（探测中 / 下载中 / 合并中 / 已完成…）。

@@ -63,6 +63,9 @@ public partial class MainWindow : Window
         Vm.ClipboardHintShown += AnimateClipboardHint;
         Vm.TaskCompleted += OnTaskCompleted;
 
+        // 「回到顶部」：VM 不碰 ScrollViewer，只发事件，由窗口执行滚动
+        Vm.ScrollParseToTopRequested += ScrollParseToTop;
+
         SetupWindowsIntegration();
 
         // 淡入：避免窗口「啪」地出现。150ms 足够快，长于 250ms 会显得拖沓。
@@ -218,6 +221,40 @@ public partial class MainWindow : Window
             : "YunX Desktop · 空闲");
     }
 
+    /// <summary>
+    /// 把解析页滚回顶部。
+    ///
+    /// <para><b>为什么要有这个按钮</b>：解析出几十个文件时，用户勾完选在列表底部，
+    /// 顶部那个「开始下载」已经滚出视野。底部也放了下载按钮，但仍可能需要回顶部看题目/链接，
+    /// 所以给一条明确的回路，而不是让用户自己拖滚动条。</para>
+    ///
+    /// <para>自己算缓动而不是用 <see cref="DoubleAnimation"/>：ScrollViewer 的
+    /// <c>VerticalOffset</c> 不是依赖属性，无法直接对其做动画，
+    /// 只能定时调用 <c>ScrollToVerticalOffset</c>。瞬间跳变会让人分不清是
+    /// "页面重绘了"还是"滚上去了"，动画给出方向感。</para>
+    /// </summary>
+    private void ScrollParseToTop()
+    {
+        var sv = ParseScrollViewer;
+        if (sv == null || sv.VerticalOffset <= 0) return;
+
+        double from = sv.VerticalOffset;
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        timer.Tick += (_, _) =>
+        {
+            double t = Math.Min(1.0, sw.Elapsed.TotalMilliseconds / 260.0);
+            double eased = 1 - Math.Pow(1 - t, 3);   // ease-out cubic
+            sv.ScrollToVerticalOffset(from * (1 - eased));
+            if (t >= 1.0) timer.Stop();
+        };
+        timer.Start();
+    }
+
     /// <summary>提示卡片滑入：从下方 12px 处淡入。</summary>
     private void AnimateClipboardHint()
     {
@@ -288,10 +325,12 @@ public partial class MainWindow : Window
 
         if (running > 0)
         {
-            var r = MessageBox.Show(
+            // 用项目自己的深色对话框，而不是系统 MessageBox（后者在深色界面里是白底）
+            int pick = Views.PromptDialog.Choose(
+                "仍在下载",
                 $"还有 {running} 个任务在下载，确定退出？\n\n未完成的部分会保留断点，下次可续传。",
-                "仍在下载", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            if (r != MessageBoxResult.OK)
+                "退出");
+            if (pick != 0)
             {
                 e.Cancel = true;
                 return;

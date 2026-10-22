@@ -69,6 +69,120 @@ public sealed class AppDatabase : IDisposable
 
         if (version < 1) MigrateV1();
         if (version < 1) SetVersion(1);
+
+        if (version < 2) MigrateV2();
+        if (version < 2) SetVersion(2);
+
+        if (version < 3) MigrateV3();
+        if (version < 3) SetVersion(3);
+    }
+
+    /// <summary>
+    /// v3：清理解析历史里的重复记录。
+    ///
+    /// <para><b>背景</b>：v2 之前的去重窗口只有 1 小时，同一个链接隔久了再解析会再插一条；
+    /// 而且比对的是原始字符串，带不带协议、末尾有无斜杠都会被当成不同链接。
+    /// 用户库里已经攒下了这种重复行，光改代码不会自动消失。</para>
+    ///
+    /// <para>这里按「规范化 key」分组，每组只留 created_at 最新的一条。</para>
+    /// </summary>
+    private void MigrateV3()
+    {
+        try
+        {
+            // 取出全部记录，在内存里按规范化 key 分组
+            var rows = new List<(long Id, string Raw, long CreatedAt)>();
+            lock (_gate)
+            {
+                using var cmd = _conn.CreateCommand();
+                cmd.CommandText = "SELECT id, raw_input, created_at FROM resolve_history";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    rows.Add((r.GetInt64(0), r.GetString(1), r.GetInt64(2)));
+            }
+
+            if (rows.Count == 0) return;
+
+            // 每组保留最新一条，其余删掉
+            var duplicates = rows
+                .GroupBy(x => HistoryNormalizeKey(x.Raw))
+                .Where(g => g.Count() > 1)
+                .SelectMany(g => g.OrderByDescending(x => x.CreatedAt).Skip(1).Select(x => x.Id))
+                .ToList();
+
+            if (duplicates.Count == 0) return;
+
+            lock (_gate)
+            {
+                foreach (long id in duplicates)
+                {
+                    using var del = _conn.CreateCommand();
+                    del.CommandText = "DELETE FROM resolve_history WHERE id=$id";
+                    del.Parameters.AddWithValue("$id", id);
+                    del.ExecuteNonQuery();
+                }
+            }
+        }
+        catch
+        {
+            // 迁移失败不该阻止程序启动：历史里多几条重复而已，用户可手动清空
+        }
+    }
+
+    /// <summary>
+    /// 历史去重用的规范化 key。
+    ///
+    /// <para>与 <c>HistoryRepository.NormalizeKey</c> 保持一致。
+    /// 这里单独写一份而不是直接引用，是因为迁移跑在仓储就绪之前 ——
+    /// 但两处逻辑必须同步修改，改一处忘另一处会导致去重和清理结果不一致。</para>
+    /// </summary>
+    private static string HistoryNormalizeKey(string rawInput)
+    {
+        if (string.IsNullOrWhiteSpace(rawInput)) return "";
+        string s = rawInput.Trim();
+
+        foreach (var p in new[] { "https://", "http://" })
+            if (s.StartsWith(p, StringComparison.OrdinalIgnoreCase)) { s = s[p.Length..]; break; }
+        if (s.StartsWith("www.", StringComparison.OrdinalIgnoreCase)) s = s[4..];
+
+        s = s.TrimEnd('/');
+
+        int slash = s.IndexOf('/');
+        return slash > 0
+            ? s[..slash].ToLowerInvariant() + s[slash..]
+            : s.ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// v2：收藏增加「用户自定义名」标记。
+    ///
+    /// <para><b>为什么需要单独一列</b>：原先只有一个 <c>label</c>，分不清那是
+    /// 用户起的名字、还是程序自动生成的短名（owner/repo）。
+    /// 而 <see cref="FavoriteRepository.Add"/> 的 ON CONFLICT 会覆盖 label ——
+    /// 用户一旦重新收藏同一个链接，辛苦起的中文名就被自动短名冲掉了。</para>
+    ///
+    /// <para>有了这个标记：自动名可以被自动更新，自定义名永不被覆盖。</para>
+    /// </summary>
+    private void MigrateV2()
+    {
+        // 老库里已有的 label 无从判断来源，保守起见按「非自定义」处理：
+        // 它们本来就是程序自动写的，让短名生成逻辑接管即可。
+        if (!ColumnExists("favorite", "label_custom"))
+            Exec("ALTER TABLE favorite ADD COLUMN label_custom INTEGER NOT NULL DEFAULT 0;");
+    }
+
+    private bool ColumnExists(string table, string column)
+    {
+        lock (_gate)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = $"PRAGMA table_info({table})";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                if (string.Equals(r.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
     }
 
     private void MigrateV1()

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -43,6 +44,9 @@ public enum AppPage
     Accounts = 2,
     Debug = 3,
     Settings = 4,
+
+    /// <summary>收藏夹。</summary>
+    Favorites = 5,
 }
 
 /// <summary>Release 资产的可勾选行。</summary>
@@ -108,6 +112,32 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Assets = new ObservableCollection<AssetItemViewModel>();
         LogLines = new ObservableCollection<string>();
         MirrorOptions = new ObservableCollection<string>();
+
+        // 资产勾选状态变化要驱动底部那段「已选 N 个 / 开始下载」的提示。
+        // 元素是增删的（换目录、重新解析），所以集合变化时要把新元素也挂上订阅，
+        // 并且在移除时解绑 —— 不然后面这些旧对象会一直被这个 VM 引用着。
+        Assets.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems != null)
+                foreach (AssetItemViewModel a in e.OldItems)
+                    a.PropertyChanged -= OnAssetPropertyChanged;
+
+            if (e.NewItems != null)
+                foreach (AssetItemViewModel a in e.NewItems)
+                    a.PropertyChanged += OnAssetPropertyChanged;
+
+            OnPropertyChanged(nameof(AssetsSelectionText));
+        };
+        SelectAllAssetsCommand = new RelayCommand(() => SetAllAssets(true));
+        ScrollParseToTopCommand = new RelayCommand(RequestScrollParseToTop);
+        ToggleFavoritesCollapsedCommand =
+            new RelayCommand(() => FavoritesCollapsed = !FavoritesCollapsed);
+        RenameFavoriteCommand = new RelayCommand(RenameFavorite);
+        ClearAllFavoritesCommand = new RelayCommand(ClearAllFavorites);
+        RemoveFavoriteCommand = new RelayCommand(RemoveFavorite);
+        // 折叠状态在 setter 里会写回设置，所以恢复时必须绕过 setter 直接赋字段，
+        // 否则启动时会立刻把"上次的收起状态"当成一次用户操作再存一遍。
+        _favoritesCollapsed = _settings.FavoritesCollapsed;
 
         // 命令
         ParseCommand = new AsyncRelayCommand(ParseAsync, () => InputText.Trim().Length > 0)
@@ -470,6 +500,44 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>资产面板标题：网盘是「分享内容」，GitHub 是「选择要下载的资产」。</summary>
     public string AssetsTitle => IsCloudSource ? "分享内容（点目录进入，勾选文件下载）" : "选择要下载的资产";
 
+    /// <summary>
+    /// 列表底部的「已选 N / 共 M」提示。
+    ///
+    /// <para>放在按钮旁边，是因为用户勾选完之后视线就在列表底部 ——
+    /// 让他不用滑回顶部也能确认自己选了几项、有没有选错。</para>
+    /// </summary>
+    public string AssetsSelectionText
+    {
+        get
+        {
+            int total = Assets.Count(a => a.IsFile);
+            int picked = Assets.Count(a => a.IsFile && a.IsSelected);
+            if (total == 0) return "";
+
+            // 选中 0 项时把话说清楚，否则用户点了「开始下载」没反应会以为是 bug
+            return picked == 0
+                ? $"未选中文件（共 {total} 个）—— 勾选后才能下载"
+                : $"已选 {picked} / {total} 个文件";
+        }
+    }
+
+    /// <summary>勾选状态变化的统一回调：只需要刷新那段提示文案。</summary>
+    private void OnAssetPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AssetItemViewModel.IsSelected))
+            OnPropertyChanged(nameof(AssetsSelectionText));
+    }
+
+    /// <summary>
+    /// 请求把解析页滚回顶部。
+    ///
+    /// <para>VM 不持有 ScrollViewer（那是 View 的事），所以这里只发一个事件，
+    /// 由窗口订阅后执行真正的滚动。这样 ViewModel 仍然可以脱离 WPF 单测。</para>
+    /// </summary>
+    public event Action? ScrollParseToTopRequested;
+
+    private void RequestScrollParseToTop() => ScrollParseToTopRequested?.Invoke();
+
     private bool _showAssets;
     public bool ShowAssets { get => _showAssets; set => SetProperty(ref _showAssets, value); }
 
@@ -480,7 +548,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool HasTasks { get => _hasTasks; set => SetProperty(ref _hasTasks, value); }
 
     private bool _isFavorited;
-    public bool IsFavorited { get => _isFavorited; set => SetProperty(ref _isFavorited, value); }
+    public bool IsFavorited
+    {
+        get => _isFavorited;
+        set
+        {
+            if (!SetProperty(ref _isFavorited, value)) return;
+            // 按钮文字跟着变，否则点了没反应的样子
+            OnPropertyChanged(nameof(FavoriteButtonText));
+        }
+    }
+
+    /// <summary>收藏按钮上的文字：随状态切换，让"已收藏"这件事看得见。</summary>
+    public string FavoriteButtonText => IsFavorited ? "已收藏" : "收藏";
 
     private string _historyKeyword = "";
     public string HistoryKeyword
@@ -488,6 +568,66 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _historyKeyword;
         set { if (SetProperty(ref _historyKeyword, value)) RefreshHistory(); }
     }
+
+    /// <summary>
+    /// 是否有解析历史（用于空态提示）。
+    ///
+    /// <para>必须显式通知：<see cref="History"/> 是 ObservableCollection，
+    /// 它的变化不会自动让这个计算属性失效 —— 不调用 OnPropertyChanged 的话，
+    /// 界面会一直停在"还没有历史"的提示上。</para>
+    /// </summary>
+    public bool HasHistory => History.Count > 0;
+
+    /// <summary>历史为空时显示占位文案；有关键字搜索时换个说法。</summary>
+    public string HistoryEmptyText => string.IsNullOrWhiteSpace(HistoryKeyword)
+        ? "还没有解析记录。粘贴链接解析一次，这里会留下痕迹，方便以后直接复用（连提取码一起记住）。"
+        : "没有匹配的记录。";
+
+    /// <summary>
+    /// 是否有收藏（用于空态提示）。
+    ///
+    /// <para>与 <see cref="HasHistory"/> 同理：ObservableCollection 的元素变化
+    /// 不会让计算属性自动失效，必须在 <c>RefreshFavorites()</c> 里手动通知。</para>
+    /// </summary>
+    public bool HasFavorites => Favorites.Count > 0;
+
+    public string FavoritesEmptyText =>
+        "还没有收藏。解析出结果后点「收藏」，常用链接会固定在这里，不会随历史被挤掉。";
+
+    private bool _favoritesCollapsed;
+
+    /// <summary>
+    /// 收藏区是否收起。
+    ///
+    /// <para><b>为什么要能收</b>：侧边栏只有 204px 宽，收藏区占的是导航下方的
+    /// 全部剩余高度。收藏十几条之后，导航被挤到上面、下面全是链接，
+    /// 而用户多数时候只是路过侧边栏去点导航 —— 这时候收藏是干扰。</para>
+    ///
+    /// <para>默认展开：新用户还没有收藏，展开也占不到地方；
+    /// 一旦收起，选择会被记住（见 SettingsStore.FavoritesCollapsed）。</para>
+    /// </summary>
+    public bool FavoritesCollapsed
+    {
+        get => _favoritesCollapsed;
+        set
+        {
+            if (!SetProperty(ref _favoritesCollapsed, value)) return;
+            _settings.FavoritesCollapsed = value;
+            OnPropertyChanged(nameof(FavoritesListVisible));
+            OnPropertyChanged(nameof(FavoritesChevronAngle));
+            OnPropertyChanged(nameof(FavoritesToggleTip));
+        }
+    }
+
+    /// <summary>收藏列表是否可见（有收藏且未收起）。</summary>
+    public bool FavoritesListVisible => HasFavorites && !FavoritesCollapsed;
+
+    /// <summary>折叠三角的角度：展开朝下 90°，收起朝右 0°。</summary>
+    public double FavoritesChevronAngle => FavoritesCollapsed ? 0 : 90;
+
+    public string FavoritesToggleTip => FavoritesCollapsed ? "展开收藏" : "收起收藏";
+
+    public RelayCommand ToggleFavoritesCollapsedCommand { get; }
 
     // ===== 下载调试页 =====
 
@@ -631,11 +771,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get
         {
-            string ver = typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
-            return $"YunX Desktop（C# 重构版）v{ver}　·　Copyright (C) 2026 yamleaf\n" +
-                   "本程序是自由软件，依据 GNU AGPL-3.0 授权发布，不提供任何担保。" +
-                   "你可以重新分发或修改它，但须同样以 AGPL-3.0 开放源码。" +
-                   "基于 YunX-Desktop（Kotlin）重构，完整协议见程序目录或仓库中的 LICENSE。";
+            string ver = typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
+            return $"YunX Desktop v{ver}　·　Copyright (C) 2026 Lyaco";
         }
     }
 
@@ -846,6 +983,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set { _settings.KeepAwake = value; OnPropertyChanged(); }
     }
 
+    /// <summary>
+    /// 下载历史保留条数（已完成任务）。
+    ///
+    /// <para>下限 1：设 0 会让"重启后空列表"重现，用户没法区分
+    /// 「没下过」和「记录丢了」。上限 1000：再多也没人翻，只是占库。</para>
+    /// </summary>
+    public int CompletedHistoryLimit
+    {
+        get => _settings.CompletedHistoryLimit;
+        set
+        {
+            int clamped = Math.Clamp(value, 1, 1000);
+            if (_settings.CompletedHistoryLimit == clamped) return;
+
+            _settings.CompletedHistoryLimit = clamped;
+            OnPropertyChanged();
+
+            // 调小后立即生效：不用等下一次下载完成才裁剪
+            PruneCompletedHistory();
+            _ = LogAsync($"下载历史保留条数：{clamped}");
+        }
+    }
+
     public bool ClipboardWatch
     {
         get => _settings.ClipboardWatch;
@@ -935,6 +1095,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsAccountsPage));
             OnPropertyChanged(nameof(IsDebugPage));
             OnPropertyChanged(nameof(IsSettingsPage));
+            OnPropertyChanged(nameof(IsFavoritesPage));
             SyncDebugTimer();
         }
     }
@@ -944,6 +1105,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool IsAccountsPage => _page == AppPage.Accounts;
     public bool IsDebugPage => _page == AppPage.Debug;
     public bool IsSettingsPage => _page == AppPage.Settings;
+    public bool IsFavoritesPage => _page == AppPage.Favorites;
 
     private bool _showLog;
     /// <summary>日志抽屉是否展开（默认收起，需要排查时才看）。</summary>
@@ -1084,6 +1246,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand OpenTaskCommand { get; }
     public RelayCommand SelectAllAssetsCommand { get; }
     public RelayCommand SelectNoAssetsCommand { get; }
+
+    /// <summary>把解析页滚回顶部（配合列表底部的「开始下载」使用）。</summary>
+    public RelayCommand ScrollParseToTopCommand { get; }
     public RelayCommand SaveSettingsCommand { get; }
     public RelayCommand CancelTaskCommand { get; }
     public RelayCommand NavigateCommand { get; }
@@ -1096,6 +1261,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand RevealFileCommand { get; }
     public RelayCommand CopyLinkCommand { get; }
     public RelayCommand ToggleFavoriteCommand { get; }
+
+    /// <summary>给收藏起自定义名（留空恢复显示网址）。</summary>
+    public RelayCommand RenameFavoriteCommand { get; }
+
+    /// <summary>清空全部收藏。</summary>
+    public RelayCommand ClearAllFavoritesCommand { get; }
+
+    /// <summary>删除单条收藏（收藏页的行内按钮用）。</summary>
+    public RelayCommand RemoveFavoriteCommand { get; }
     public RelayCommand UseHistoryCommand { get; }
     public RelayCommand DeleteHistoryCommand { get; }
     public RelayCommand ClearHistoryCommand { get; }
@@ -1334,6 +1508,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _services?.History.Add(input, content.Kind.ToString(),
                 content.Title ?? "", passcode: "");
+
+            // ★ 写完必须立刻刷新列表。
+            //   只写库不刷 UI 的话，界面上还是旧内容 —— 用户新解析的链接要重启才看得见，
+            //   看起来就像"历史功能坏了"。这一行曾漏掉，只补了写入。
+            RefreshHistory();
         }
         catch (Exception hx)
         {
@@ -1345,6 +1524,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsCloudSource));
         OnPropertyChanged(nameof(CanCloudBack));
         _resolvedFor = input;
+
+        // 换了链接就要重新判断收藏状态，否则上一个链接的「已收藏」
+        // 会一直挂在按钮上，看起来像这个新链接也被收藏了。
+        try { IsFavorited = _services?.Favorites.Exists(input) ?? false; }
+        catch { IsFavorited = false; }
 
         ParsedKind = (content.Title ?? "").Split(" · ")[0];
         ParsedTitle = content.Title ?? "";
@@ -1541,6 +1725,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ShowAssets = false;
         Assets.Clear();
 
+        // 磁力也记历史：否则"解析过什么磁力"一问三不知，而这个功能同样走解析入口。
+        // 与 HTTP 解析那条路径保持一致：写库 + 立即刷新。
+        try
+        {
+            _services?.History.Add(url, "Magnet", name, passcode: "");
+            RefreshHistory();
+        }
+        catch (Exception hx)
+        {
+            _ = LogAsync($"记录解析历史失败：{hx.Message}", true);
+        }
+
+        // 收藏状态同样要按新链接重算（与 HTTP 路径一致）
+        try { IsFavorited = _services?.Favorites.Exists(url) ?? false; }
+        catch { IsFavorited = false; }
+
         // ★ info hash 结构不合法时直接拦下。
         //   Gopeed 底层的 anacrolix/torrent 遇到全零/残缺的 hash 会 panic，
         //   那是 Go 级 panic —— 整个引擎进程会退出，连带弄死引擎上其它正在跑的任务。
@@ -1718,6 +1918,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     vm.Speed = 0;
                     await LogAsync($"磁力下载完成：{t.Name} · {Humanize.Size(t.Downloaded)}")
                         .ConfigureAwait(true);
+
+                    // 磁力任务同样落历史：这里原先什么都没有，
+                    // 连"下过什么磁力"都留不下来。
+                    PersistTask(vm, force: true);
+                    PruneCompletedHistory();
 
                     if (_settings.NotifyOnComplete)
                     {
@@ -2140,6 +2345,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (cloud != null && vm.TryHoldShareRef()) AddShareRef(cloud);
 
+        // ★ 入队即落盘。
+        //
+        //   早期只在"任务结束"（暂停/取消/失败）时才写库，于是下载中被强杀或断电时，
+        //   这个任务在库里根本不存在 —— 重启后列表空的，断点也找不到，
+        //   "断点续传"这个核心能力在最需要它的场景（异常退出）恰好失效。
+        //   现在入队就先 INSERT 一行（state=Queued），后续按 3 秒节流 UPDATE 进度。
+        PersistTask(vm, force: true);
+
         var task = RunTaskAsync(vm);
         lock (_running) _running.Add(task);
         task.ContinueWith(t =>
@@ -2263,6 +2476,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 if (p.TotalBytes > 0) vm.Size = p.TotalBytes;
                 vm.Speed = p.SpeedBytesPerSec;
                 vm.Phase = p.Phase;
+
+                // 进度落盘（节流：force=false 时按 3 秒一次）。
+                // 目的是"强杀/断电后重启能知道下到哪了"；断点的真实位置存在
+                // PartMetadata 里，这里记的是给用户看的进度。
+                PersistTask(vm, force: false);
             });
 
             var engine = new DownloadEngine(_provider, _pool);
@@ -2331,13 +2549,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     catch { /* 通知失败不影响下载结果 */ }
                 }
 
-                // 完成即交付：把库里的记录删掉（否则下次启动会"恢复"一个已经下完的任务）。
-                // PersistTask 本身对 Done 状态是直接 return 的，所以这里必须显式删。
-                if (vm.DbId > 0)
-                {
-                    try { _services?.Tasks.Delete(vm.DbId); vm.DbId = 0; }
-                    catch (Exception ex) { _ = LogAsync($"清理已完成任务记录失败：{ex.Message}", true); }
-                }
+                // ★ 完成不再是"删掉记录"，而是**转为历史**（state=Done）。
+                //
+                //   早期这里是 DELETE，理由是"完成即交付，恢复没有意义"。道理没错，
+                //   但那同时也把"下载过什么"一并抹掉了 —— 用户重启后看到空列表，
+                //   分不清是自己没下过、还是程序把记录弄丢了。
+                //
+                //   现在：落盘为 Done，重启时由 LoadCompleted 读回来显示，但不参与恢复。
+                //   条数由 PruneCompleted 收敛到「最近 N 条」。
+                PersistTask(vm, force: true);
+                PruneCompletedHistory();
             }
             catch (DownloadCancelledException)
             {
@@ -2517,6 +2738,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             "accounts" => AppPage.Accounts,
             "debug" => AppPage.Debug,
             "settings" => AppPage.Settings,
+            "favorites" => AppPage.Favorites,
             _ => AppPage.Parse,
         };
     }
@@ -2654,18 +2876,67 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _persistFailures;
 
     /// <summary>
-    /// 把任务写入数据库（用于重启恢复）。
-    /// 只持久化**未完成**的任务：已完成即视为已交付，持久化没有意义。
+    /// 进度写盘的节流窗口。
+    ///
+    /// <para><b>为什么要节流</b>：进度回调在下载热路径上，每秒可能触发几十次。
+    /// SQLite 即使走 WAL，每次 UPDATE 也要落一次事务日志 —— 100KB/s 的小文件还好，
+    /// 但 8 线程满速下载时实测磁盘写入会被拖成瓶颈，而且对 SSD 是无谓的磨损。</para>
+    ///
+    /// <para><b>为什么取 5 秒</b>：强杀场景下最多丢失 5 秒进度。
+    /// 断点续传本身的粒度是「整块分片」，丢 5 秒的字节计数不影响续传正确性 ——
+    /// 重启后会从断点元数据里恢复真实位置，这个数值只是用于显示。
+    /// 状态变化（暂停/完成/失败）不走节流，立即写，所以这个窗口只影响"进度数字"。</para>
+    /// </summary>
+    private static readonly TimeSpan ProgressWriteInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// 把已完成记录裁剪到「最近 N 条」。
+    ///
+    /// <para>在每次任务完成时调用，而不是只在启动时 —— 一次会话里连下 200 个文件时，
+    /// 表不会先涨到 200 条再被砍。</para>
+    /// </summary>
+    private void PruneCompletedHistory()
+    {
+        if (_services == null) return;
+        try
+        {
+            _services.Tasks.PruneCompleted(Math.Max(1, _settings.CompletedHistoryLimit));
+        }
+        catch (Exception e)
+        {
+            // 裁剪失败不影响下载结果，但要说出来 —— 否则库会无声地一直涨
+            _ = LogAsync($"清理历史记录失败：{e.Message}", true);
+        }
+    }
+
+    /// <summary>
+    /// 把任务写入数据库（用于重启恢复 + 下载历史）。
+    ///
+    /// <para><b>写什么</b>：
+    /// <list type="bullet">
+    /// <item>未完成（排队/运行/暂停/取消/失败）→ 重启后恢复断点；</item>
+    /// <item>已完成 → 只作为历史保留，不参与恢复，数量由 <see cref="CompletedHistoryLimit"/> 限制。</item>
+    /// </list></para>
     ///
     /// <para><b>Id 的语义</b>：<see cref="DownloadTaskViewModel.DbId"/> 为 0 表示还没写过，
     /// 走 INSERT 并由仓储回写真实主键；之后非 0，走 UPDATE。<b>不能</b>再拿
     /// <see cref="DownloadTaskViewModel.TaskId"/>（进程内编号）当主键 ——
     /// 那会让首次写入也走 UPDATE，而表里没有对应行。</para>
+    ///
+    /// <paramref name="force"/> 为 false 时按 <see cref="ProgressWriteInterval"/> 节流，
+    /// 只对「运行中」的任务生效 —— 其它状态都是离散事件，一律立即写。
     /// </summary>
-    private void PersistTask(DownloadTaskViewModel vm)
+    private void PersistTask(DownloadTaskViewModel vm, bool force = true)
     {
         if (_services == null) return;
-        if (vm.State == TaskState.Done) return;
+
+        // 运行中的进度写盘要节流；若距上次写盘不足间隔，直接跳过（下次会补上）
+        if (!force && vm.State == TaskState.Running)
+        {
+            var now = DateTime.UtcNow;
+            if (now - vm.LastPersistAt < ProgressWriteInterval) return;
+            vm.LastPersistAt = now;
+        }
 
         try
         {
@@ -2682,6 +2953,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     TaskState.Paused => PersistedTaskState.Paused,
                     TaskState.Running => PersistedTaskState.Running,
                     TaskState.Failed => PersistedTaskState.Failed,
+                    TaskState.Done => PersistedTaskState.Done,
+                    // 取消单独记，不要混进 Queued：重启恢复时两者的 UX 完全不同
+                    TaskState.Cancelled => PersistedTaskState.Cancelled,
                     _ => PersistedTaskState.Queued,
                 },
                 Error = vm.Error,
@@ -2828,11 +3102,72 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 // 只说真话：Paused/Failed 才能点继续
                 _ = LogAsync($"已恢复 {list.Count} 个未完成任务，其中 {resumable} 个可点继续");
             }
+
+            RestoreCompletedHistory();
             RecalcTotals();
         }
         catch (Exception e)
         {
             _ = LogAsync($"恢复任务失败：{e.Message}", true);
+        }
+    }
+
+    /// <summary>
+    /// 把已完成的下载记录显示回列表（只作历史，不参与恢复）。
+    ///
+    /// <para><b>为什么单独一个方法</b>：这些行和"未完成任务"在库里的状态、在 UI 上的语义
+    /// 都不同 —— 它们没有断点、不能续传，只能「打开所在文件夹」或删除。
+    /// 混在 <see cref="RestorePersistedTasks"/> 里会让那段逻辑充满分支。</para>
+    ///
+    /// <para>历史按完成时间倒序插在未完成任务之后，保证「待办在上、历史在下」。</para>
+    /// </summary>
+    private void RestoreCompletedHistory()
+    {
+        if (_services == null) return;
+        try
+        {
+            int limit = Math.Max(1, _settings.CompletedHistoryLimit);
+            var done = _services.Tasks.LoadCompleted(limit);
+            if (done.Count == 0) return;
+
+            foreach (var t in done)
+            {
+                var payload = ParseTaskPayload(t.PayloadJson);
+
+                var vm = new DownloadTaskViewModel
+                {
+                    TaskId = _nextTaskId++,
+                    DbId = t.Id,
+                    Url = t.Url,
+                    FileName = t.FileName,
+                    Size = t.TotalBytes > 0 ? t.TotalBytes : t.DoneBytes,
+                    Done = t.TotalBytes > 0 ? t.TotalBytes : t.DoneBytes,
+                    SaveDir = payload?.SaveDir ?? t.SaveDir,
+                    Platform = payload?.Platform,
+                    State = TaskState.Done,
+                    Phase = DownloadPhase.Completed,
+                };
+
+                // 文件被用户删掉/移走后，历史仍然保留（那是"下过"的记录），
+                // 但 UI 上"打开文件夹"会失败 —— 这里标记出来，让按钮能给出准确提示。
+                try
+                {
+                    string full = Path.Combine(vm.SaveDir, vm.FileName);
+                    if (File.Exists(full)) vm.ResultPath = full;
+                }
+                catch { /* 路径非法就当文件不存在 */ }
+
+                Tasks.Add(vm);
+                _nextTaskId = Math.Max(_nextTaskId, (int)t.Id + 1);
+            }
+
+            HasTasks = true;
+            _ = LogAsync($"已载入 {done.Count} 条下载历史");
+        }
+        catch (Exception e)
+        {
+            // 历史加载失败不该拖累主流程（未完成任务已经恢复了）
+            _ = LogAsync($"载入下载历史失败：{e.Message}", true);
         }
     }
 
@@ -3123,19 +3458,124 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            _services.Favorites.Add(input, ParsedTitle.Length > 0 ? ParsedTitle : input);
+            // ★ 标题来源要判断，不能直接用 ParsedTitle。
+            //   ParsedTitle 的初始值是输入框的占位提示「等待输入链接」——
+            //   用户没解析就直接收藏时，这个占位符会被当成标题存进库，
+            //   侧边栏上就全是「等待输入链接」，完全看不出收藏的是什么。
+            //   没解析过就留空 label，交给 FavoriteEntry.DisplayLabel 生成短名（owner/repo 之类）。
+            string label = !string.IsNullOrWhiteSpace(ParsedTitle)
+                           && HasParsed
+                           && !ParsedTitle.StartsWith("等待", StringComparison.Ordinal)
+                           && string.Equals(_resolvedFor, input, StringComparison.Ordinal)
+                ? ParsedTitle
+                : "";
+
+            _services.Favorites.Add(input, label);
             IsFavorited = true;
-            _ = LogAsync("已收藏");
+            _ = LogAsync($"已收藏：{(label.Length > 0 ? label : input)}");
         }
         RefreshFavorites();
     }
 
-    private void UseFavorite(object? param)
+    /// <summary>
+    /// 给收藏起名字。
+    ///
+    /// <para><b>留空 = 恢复默认</b>：清掉自定义名后显示会退回网址，
+    /// 这与用户"不然就显示网址"的要求一致。所以在提示里写明这一点，
+    /// 而不是给一个单独的「清除」按钮 —— 少一个控件，语义也更直接。</para>
+    /// </summary>
+    private void RenameFavorite(object? param)
     {
         if (param is not FavoriteEntry f) return;
-        InputText = f.RawInput;
+        if (_services == null) return;
+
+        // 预填当前自定义名；如果还没起过名字，就用网址占位，方便用户直接改
+        string initial = f.LabelCustom ? f.Label : "";
+
+        try
+        {
+            string? name = Views.PromptDialog.Ask(
+                "重命名收藏",
+                "给这个收藏起个名字（留空则显示网址）：\n" + f.RawInput,
+                secret: false,
+                initial: initial);
+
+            if (name == null) return;   // 取消
+
+            if (_services.Favorites.Rename(f.RawInput, name))
+            {
+                RefreshFavorites();
+                _ = LogAsync(string.IsNullOrWhiteSpace(name)
+                    ? $"已清除收藏名称：{f.RawInput}"
+                    : $"收藏已重命名：{name.Trim()}");
+            }
+            else
+            {
+                _ = LogAsync("重命名失败：这条收藏可能已被删除", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = LogAsync($"重命名失败：{ex.Message}", true);
+        }
+    }
+
+    /// <summary>删除单条收藏（收藏页的行内「删除」按钮）。</summary>
+    private void RemoveFavorite(object? param)
+    {
+        if (param is not FavoriteEntry f) return;
+        if (_services == null) return;
+
+        if (_services.Favorites.Remove(f.RawInput))
+        {
+            RefreshFavorites();
+            _ = LogAsync($"已取消收藏：{f.DisplayLabel}");
+        }
+    }
+
+    private void ClearAllFavorites()
+    {
+        if (_services == null) return;
+        int n = Favorites.Count;
+        if (n == 0) return;
+
+        // 弹窗和清库都可能抛（Owner 设置、SQLite 写失败等）。
+        // 不接住的话会一路冒到 DispatcherUnhandledException，
+        // 用户看到的是「Argument Exception: 无法将 Owner 属性设置为它本身」这种
+        // 纯技术报错 —— 既看不懂也没提示能做什么。
+        try
+        {
+            var ok = Views.PromptDialog.Choose("清空收藏",
+                $"确定要清空全部 {n} 条收藏吗？此操作不可撤销（不影响已下载的文件）。",
+                "清空");
+            // Choose 自己会补一个「取消」按钮，这里只传真正的选项，
+            // 否则会出现「清空 / 取消 / 取消」三个按钮（曾经就这样）。
+            // 返回 0 = 选了「清空」，-1 = 取消。
+            if (ok != 0) return;
+
+            _services.Favorites.Clear();
+            RefreshFavorites();
+            _ = LogAsync($"已清空 {n} 条收藏");
+        }
+        catch (Exception ex)
+        {
+            _ = LogAsync($"清空收藏失败：{ex.Message}", true);
+        }
+    }
+
+    private void UseFavorite(object? param)
+    {
+        if (param is not FavoriteEntry f) return;        InputText = f.RawInput;
         _services?.Favorites.MarkUsed(f.RawInput);
         _ = LogAsync($"从收藏载入：{f.Label}");
+
+        // 收藏在侧边栏，可能从任何页面点进来 —— 必须切回解析页，
+        // 否则输入框填好了但用户看不见，等于没反应。
+        Page = AppPage.Parse;
+
+        // 顺带直接解析：从侧边栏点收藏的意图就是"我要下这个"，
+        // 还让用户再点一次「解析」是多余的。
+        if (ParseCommand.CanExecute(null)) ParseCommand.Execute(null);
     }
 
     private void RefreshFavorites()
@@ -3143,6 +3583,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_services == null) return;
         Favorites.Clear();
         foreach (var f in _services.Favorites.List()) Favorites.Add(f);
+
+        // 空态依赖数量，必须手动通知（ObservableCollection 不会让计算属性失效）
+        OnPropertyChanged(nameof(HasFavorites));
+        // 列表可见性同时看"有没有收藏"和"是否收起"，两个都要重算
+        OnPropertyChanged(nameof(FavoritesListVisible));
     }
 
     // ================= 历史 =================
@@ -3174,6 +3619,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_services == null) return;
         History.Clear();
         foreach (var h in _services.History.Query(HistoryKeyword)) History.Add(h);
+
+        // 空态与占位文案依赖数量和搜索词，必须手动通知
+        OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(HistoryEmptyText));
     }
 
     // ================= 日志导出 / 调优 / 更新 =================
@@ -3234,7 +3683,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             "登出 " + row.DisplayName,
             $"将删除本机保存的 {row.DisplayName} 登录凭证（Cookie）。\n\n" +
             "下次使用需要重新登录；已下载的文件不受影响。",
-            "登出", "取消");
+            "登出");
         if (pick != 0) return;
 
         try
@@ -3612,16 +4061,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             //   而不是被当成 Running 后又卡在等待中。
             foreach (var t in Tasks.ToList())
             {
-                if (t.State == TaskState.Done) continue;
-
                 if (t.State is TaskState.Running or TaskState.Queued)
                     t.State = TaskState.Paused;
 
+                // Done 也要写：它们现在是"下载历史"，退出时补一次确保
+                // 完成时间戳是最新的（PruneCompleted 按 updated_at 排序）。
+                // 已经写过且状态没变的，这里多一次 UPDATE 无害。
                 PersistTask(t);
 
                 // 退出是"真的结束了这一轮"：释放分享引用（会触发转存清理）
                 try { ReleaseShareRef(t); } catch { /* 善后失败不影响退出 */ }
             }
+
+            // 退出时再裁一次：本次会话可能下了一堆，N 的配额要在关程序时生效
+            PruneCompletedHistory();
 
             // 磁力引擎是独立子进程，必须显式停：否则它会作为孤儿进程继续跑，
             // 下次启动还占着 bolt 存储锁。

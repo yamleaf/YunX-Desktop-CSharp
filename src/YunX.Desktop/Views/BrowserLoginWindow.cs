@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -20,7 +20,7 @@ namespace YunX.Desktop.Views;
 /// <para><b>自动检测</b>：轮询 Cookie 变化 —— 当目标域出现<b>关键 Cookie</b>
 /// （各平台不同，见 <see cref="KeyCookies"/>）就认为登录完成，自动关闭窗口。</para>
 /// </summary>
-public sealed partial class BrowserLoginWindow : Window
+public sealed partial class BrowserLoginWindow : DialogShell
 {
     private readonly WebView2 _webView;
     private readonly string[] _domains;
@@ -53,8 +53,6 @@ public sealed partial class BrowserLoginWindow : Window
         Title = $"登录 {platformName}";
         Width = 980;
         Height = 720;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = (Brush)Application.Current.Resources["BgBrush"];
 
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -112,7 +110,28 @@ public sealed partial class BrowserLoginWindow : Window
         grid.Children.Add(bar);
         grid.Children.Add(_webView);
         grid.Children.Add(footer);
-        Content = grid;
+        // 统一外壳：自绘标题栏（与其它弹窗一致），下面才是内容
+        var outer = new Grid();
+        outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var header = BuildHeader($"登录 {platformName}");
+        Grid.SetRow(header, 0);
+        outer.Children.Add(header);
+
+        var sep = new Border
+        {
+            Height = 1,
+            Background = (Brush)Application.Current.Resources["BorderBrush"],
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        Grid.SetRow(sep, 0);
+        outer.Children.Add(sep);
+
+        Grid.SetRow(grid, 1);
+        outer.Children.Add(grid);
+
+        Content = outer;
 
         Loaded += async (_, _) => await InitializeAsync(startUrl).ConfigureAwait(true);
         Closed += (_, _) => _pollTimer?.Stop();
@@ -151,11 +170,11 @@ public sealed partial class BrowserLoginWindow : Window
         }
         catch (Exception e)
         {
-            MessageBox.Show(
+            PromptDialog.Choose("登录",
                 "内嵌浏览器初始化失败：\n\n" + e.Message +
                 "\n\n请确认已安装 Microsoft Edge WebView2 运行时（Win10/11 通常自带）。\n" +
                 "也可以改用「手动粘贴 Cookie」方式登录。",
-                "登录", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "知道了");
             DialogResult = false;
             Close();
         }
@@ -224,8 +243,8 @@ public sealed partial class BrowserLoginWindow : Window
 
             if (map.Count == 0)
             {
-                MessageBox.Show("没有提取到任何 Cookie，请确认已登录成功。",
-                    "登录", MessageBoxButton.OK, MessageBoxImage.Warning);
+                PromptDialog.Choose("登录",
+                    "没有提取到任何 Cookie，请确认已登录成功。", "知道了");
                 DialogResult = false;
                 Close();
                 return;
@@ -237,8 +256,7 @@ public sealed partial class BrowserLoginWindow : Window
         }
         catch (Exception e)
         {
-            MessageBox.Show("提取 Cookie 失败：" + e.Message, "登录",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            PromptDialog.Choose("登录", "提取 Cookie 失败：" + e.Message, "知道了");
             DialogResult = false;
             Close();
         }

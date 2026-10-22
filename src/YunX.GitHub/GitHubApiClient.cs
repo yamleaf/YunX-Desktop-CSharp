@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 yamleaf
+// Copyright (C) 2026 Lyaco
 //
 // YunX-Desktop-CSharp —— 基于 YunX-Desktop（AGPL-3.0）的 C# / WPF 重构版。
 // 本程序是自由软件：你可以依据 GNU AGPL-3.0 的条款重新分发或修改它。

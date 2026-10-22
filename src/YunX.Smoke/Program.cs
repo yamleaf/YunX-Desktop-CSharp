@@ -1,5 +1,5 @@
 ﻿// SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 yamleaf
+// Copyright (C) 2026 Lyaco
 //
 // YunX-Desktop-CSharp —— 基于 YunX-Desktop（AGPL-3.0）的 C# / WPF 重构版。
 // 本程序是自由软件：你可以依据 GNU AGPL-3.0 的条款重新分发或修改它。
@@ -810,6 +810,72 @@ internal static class Program
             var after = tasks.LoadRestorable();
             Check("进度更新生效", after[0].DoneBytes == 800, after[0].DoneBytes.ToString());
 
+            // ===== 已完成任务的历史保留（v1.0 修复：原先完成即 DELETE，历史全丢）=====
+            var doneTask = new Core.Data.PersistedTask
+            {
+                Url = "https://example.com/done.zip",
+                FileName = "done.zip",
+                SaveDir = dir,
+                TotalBytes = 2048,
+                DoneBytes = 2048,
+                State = Core.Data.PersistedTaskState.Done,
+            };
+            tasks.Upsert(doneTask);
+            Check("已完成任务能写入库", doneTask.Id > 0, doneTask.Id.ToString());
+
+            Check("已完成任务不参与恢复", tasks.LoadRestorable().All(x => x.State != Core.Data.PersistedTaskState.Done),
+                "恢复列表里不应出现 Done");
+
+            var completed = tasks.LoadCompleted(10);
+            Check("已完成任务可当历史读出", completed.Count == 1 && completed[0].FileName == "done.zip",
+                $"{completed.Count} 条");
+
+            // 取消也要参与恢复（取消时断点是刻意保留的）
+            var cancelled = new Core.Data.PersistedTask
+            {
+                Url = "https://example.com/c.zip",
+                FileName = "c.zip",
+                SaveDir = dir,
+                TotalBytes = 500,
+                DoneBytes = 100,
+                State = Core.Data.PersistedTaskState.Cancelled,
+            };
+            tasks.Upsert(cancelled);
+            Check("已取消任务仍可恢复（断点保留）",
+                tasks.LoadRestorable().Any(x => x.State == Core.Data.PersistedTaskState.Cancelled),
+                "取消应当可续传");
+
+            // ===== 只保留最近 N 条已完成 =====
+            foreach (var i in Enumerable.Range(1, 5))
+            {
+                tasks.Upsert(new Core.Data.PersistedTask
+                {
+                    Url = $"https://example.com/h{i}.zip",
+                    FileName = $"h{i}.zip",
+                    SaveDir = dir,
+                    TotalBytes = 100,
+                    DoneBytes = 100,
+                    State = Core.Data.PersistedTaskState.Done,
+                });
+                Thread.Sleep(5);   // 让 updated_at 有区分度，排序才确定
+            }
+            Check("已完成共 6 条（1 条 done + 5 条 h）", tasks.LoadCompleted(100).Count == 6,
+                tasks.LoadCompleted(100).Count.ToString());
+
+            int pruned = tasks.PruneCompleted(3);
+            var kept = tasks.LoadCompleted(100);
+            Check("裁剪到最近 3 条", kept.Count == 3, $"{kept.Count} 条");
+            Check("裁剪返回删除数量", pruned == 3, pruned.ToString());
+            // 注意：updated_at 是**秒级**时间戳，同一秒内插入的多条记录时间相同。
+            // 所以"最近"靠 id 兜底排序（id 单调递增，与插入顺序一致）。
+            // 这里断言"保留的是 id 最大的三条"，而不是按文件名猜。
+            Check("保留的是最后写入的 h3/h4/h5",
+                kept.Select(x => x.FileName).OrderBy(x => x).SequenceEqual(new[] { "h3.zip", "h4.zip", "h5.zip" }),
+                string.Join(",", kept.Select(x => x.FileName)));
+            Check("裁剪不影响未完成任务",
+                tasks.LoadRestorable().Count(x => x.State != Core.Data.PersistedTaskState.Done) >= 2,
+                "未完成/已取消的应还在");
+
             // 历史去重：同链接 1 小时内不重复
             var history = new Core.Data.HistoryRepository(db);
             history.Add("https://a/1", "repo", "标题A", "abcd");
@@ -825,6 +891,41 @@ internal static class Program
             history.Clear();
             Check("清空历史", history.Query(null).Count == 0);
 
+            // ===== 链接规范化去重（v1.0：不再只靠 1 小时窗口）=====
+            // 同一个仓库的不同写法必须算同一条，否则历史里全是重复项
+            history.Add("https://github.com/rust-lang/rust", "Repo", "rust @ master", "");
+            history.Add("https://github.com/rust-lang/rust/", "Repo", "rust @ master", "");
+            history.Add("http://github.com/rust-lang/rust", "Repo", "rust @ master", "");
+            history.Add("https://www.github.com/rust-lang/rust", "Repo", "rust @ master", "");
+            Check("同链接的 4 种写法只记 1 条",
+                history.Query(null).Count == 1, $"{history.Query(null).Count} 条");
+
+            // 路径不同则是不同记录，不能被误合并
+            history.Add("https://github.com/rust-lang/rust/releases", "Releases", "rust · Release", "");
+            Check("带 /releases 视为不同记录",
+                history.Query(null).Count == 2, $"{history.Query(null).Count} 条");
+
+            // 主机名大小写不敏感
+            history.Add("https://GitHub.com/rust-lang/rust", "Repo", "rust @ master", "");
+            Check("主机名大小写不影响去重",
+                history.Query(null).Count == 2, $"{history.Query(null).Count} 条");
+
+            // 规范化函数本身的断言
+            Check("NormalizeKey 去协议/斜杠/www",
+                Core.Data.HistoryRepository.NormalizeKey("https://www.a.com/b/") == "a.com/b",
+                Core.Data.HistoryRepository.NormalizeKey("https://www.a.com/b/"));
+            Check("NormalizeKey 保留路径语义",
+                Core.Data.HistoryRepository.NormalizeKey("https://a.com/b") !=
+                Core.Data.HistoryRepository.NormalizeKey("https://a.com/c"));
+            Check("NormalizeKey magnet 只留 infohash",
+                Core.Data.HistoryRepository.NormalizeKey(
+                    "magnet:?xt=urn:btih:ABCDEF0123456&dn=电影") == "magnet:abcdef0123456",
+                Core.Data.HistoryRepository.NormalizeKey(
+                    "magnet:?xt=urn:btih:ABCDEF0123456&dn=电影"));
+
+            history.Clear();
+            Check("清空历史（规范化用例收尾）", history.Query(null).Count == 0);
+
             // 收藏
             var fav = new Core.Data.FavoriteRepository(db);
             fav.Add("https://fav/1", "常用");
@@ -833,6 +934,67 @@ internal static class Program
             fav.MarkUsed("https://fav/1");
             Check("使用次数累加", fav.List()[0].UseCount == 1);
             Check("取消收藏", fav.Remove("https://fav/1") && !fav.Exists("https://fav/1"));
+
+            // 收藏的显示名：没标题时压成短名，否则侧边栏只能看到被截断的 "https://github.com/…"
+            fav.Add("https://github.com/rust-lang/rust", "");
+            Check("无标题时 GitHub 链接压成 owner/repo",
+                fav.List()[0].DisplayLabel == "rust-lang/rust", fav.List()[0].DisplayLabel);
+            fav.Remove("https://github.com/rust-lang/rust");
+
+            fav.Add("https://github.com/BurntSushi/ripgrep/releases/latest", "");
+            Check("带深层路径也只取 owner/repo",
+                fav.List()[0].DisplayLabel == "BurntSushi/ripgrep", fav.List()[0].DisplayLabel);
+            fav.Remove("https://github.com/BurntSushi/ripgrep/releases/latest");
+
+            fav.Add("https://pan.quark.cn/s/abc123", "");
+            Check("非 GitHub 链接去掉协议前缀",
+                fav.List()[0].DisplayLabel == "pan.quark.cn/s/abc123", fav.List()[0].DisplayLabel);
+            fav.Remove("https://pan.quark.cn/s/abc123");
+
+            // 历史脏数据：旧版本把输入框占位符当标题存进去了，显示层要兜住
+            fav.Add("https://github.com/torvalds/linux", "等待输入链接");
+            Check("占位符标题自动兜底为短名",
+                fav.List()[0].DisplayLabel == "torvalds/linux", fav.List()[0].DisplayLabel);
+            fav.Remove("https://github.com/torvalds/linux");
+
+            // 语义已变更：只有**用户自定义**的名字才优先显示，程序顺带写入的 label 不再算数
+            // （用户要的是"自定义了就显示自定义，否则显示网址"，不拿程序猜的标题冒充）
+            fav.Add("https://github.com/nodejs/node", "已解析的真实标题");
+            Check("非自定义的 label 不参与显示，仍显示网址短名",
+                fav.List()[0].DisplayLabel == "nodejs/node", fav.List()[0].DisplayLabel);
+            fav.Remove("https://github.com/nodejs/node");
+
+            // ===== 自定义命名（v1.0 新增）=====
+            fav.Add("https://github.com/golang/go", "");
+            Check("未命名时显示网址短名",
+                fav.List()[0].DisplayLabel == "golang/go", fav.List()[0].DisplayLabel);
+            Check("未命名时 LabelCustom=false", !fav.List()[0].LabelCustom);
+
+            Check("重命名成功", fav.Rename("https://github.com/golang/go", "Go 语言源码"));
+            var renamed = fav.List()[0];
+            Check("显示自定义名", renamed.DisplayLabel == "Go 语言源码", renamed.DisplayLabel);
+            Check("标记为自定义", renamed.LabelCustom);
+
+            // 关键：重新收藏同一个链接不能把用户起的名覆盖掉
+            fav.Add("https://github.com/golang/go", "自动生成的短名");
+            Check("重新收藏不覆盖自定义名",
+                fav.List()[0].DisplayLabel == "Go 语言源码", fav.List()[0].DisplayLabel);
+
+            // 清空自定义名 → 退回网址
+            fav.Rename("https://github.com/golang/go", "");
+            Check("清除自定义名后显示网址",
+                fav.List()[0].DisplayLabel == "golang/go", fav.List()[0].DisplayLabel);
+            Check("清除后标记回到非自定义", !fav.List()[0].LabelCustom);
+
+            // 重命名不存在的收藏应返回 false
+            Check("重命名不存在的收藏返回 false",
+                !fav.Rename("https://nonexistent/x", "随便"));
+
+            // 清空全部
+            fav.Add("https://a/1", "一");
+            fav.Add("https://a/2", "二");
+            int cleared = fav.Clear();
+            Check("清空全部收藏", cleared >= 2 && fav.List().Count == 0, $"删除 {cleared} 条");
 
             // 凭证（加密）
             var cipher = new Core.Security.CredentialCipher(dir,

@@ -45,7 +45,7 @@
 
 ```
 YunX-Desktop-CSharp — 基于 YunX-Desktop 的 C# / WPF 重构版
-Copyright (C) 2026  yamleaf
+Copyright (C) 2026  Lyaco
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License as published by the Free
@@ -92,6 +92,10 @@ later version.
 ---
 
 ## 界面
+
+> 发布说明见 [`docs/RELEASE-NOTES-v1.1.0.md`](docs/RELEASE-NOTES-v1.1.0.md)
+> （含本版新增内容、下载文件清单与 SHA-256 校验值）。
+> v1.0.0 的说明保留在 [`docs/RELEASE-NOTES-v1.0.0.md`](docs/RELEASE-NOTES-v1.0.0.md)。
 
 **解析**：粘贴链接自动识别来源（GitHub 仓库 / Release / 单文件 / 网盘分享 / 磁力），
 解析后直接看到结果卡片，可收藏、复制链接或逐层浏览仓库。
@@ -368,13 +372,14 @@ hosts 绕过、联网模式探测、真实下载（MD5/魔数/残留文件）、
 - **网盘主动操作**：目录分页「加载更多」、登出（清除本机 Cookie）、认证备份导出/导入
 - **账号与凭证**：网盘 Cookie 与 GitHub Token 均走 AES-GCM 加密落盘（主密钥由 DPAPI 保护）
 - **任务生命周期**：暂停 / 继续 / 取消 / 删除、排队并发控制、**持久化与重启恢复**（含请求头、网盘上下文、断点路径）
+  - 入队即落盘，**下载中被强杀/断电也能恢复**；进度每 5 秒写一次（状态变化立即写）
+  - **已完成任务保留为下载历史**（默认最近 100 条，可调），重启后仍能看到下过什么
 - 网络：DoH 绕过 hosts 劫持、直连/代理自动探测、可选 HTTP/2
 - 界面：任务列表、实时进度、Release 资产多选、设置面板、运行日志、解析历史、链接收藏、完成通知、系统托盘
 
 **仍未实现**
 
 - Windows 通知中心的**任务栏进度聚合**（当前用托盘气泡提示完成）
-- GFM Markdown 渲染（README 预览以纯文本呈现）
 - 自动更新 —— 已**主动移除**：原实现去比对上游 Kotlin 项目的 Release tag，
   与重构版（版本号从 1.0.0 重新起算）没有可比性，必然误导用户去装另一个程序。
   真要做需要：自己的 Release 仓库 + tag 与程序集版本同源 + 与单文件分发方式匹配的更新流程。

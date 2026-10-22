@@ -748,4 +748,149 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!-- ============================================================
+         工具提示
+         之前整个项目没有 ToolTip 样式，用的是系统默认 —— 深色界面上
+         弹出一个白底黑字的方框，非常刺眼。这里给全局默认样式，不用每处单独指定。
+         ============================================================ -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{StaticResource SurfaceTopBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="9,6" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="MaxWidth" Value="420" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
+         设置项开关（iOS 风格滑动开关）
+         形态：左侧文字、右侧胶囊轨道 + 可滑动圆钮。
+
+         【为什么还是 CheckBox 而不是 ToggleButton】
+         语义上这就是"勾选/不勾选"两态，CheckBox 天然带 IsChecked，
+         ViewModel 绑定一行都不用改。ControlTemplate 整个重画，
+         外观与原生的勾选框毫无关系。
+
+         【整行可点】
+         HorizontalAlignment=Stretch 让 Grid 铺满容器，
+         "文字 + 空白 + 开关"整行都是热区，和系统设置页一致，
+         不必精确点到那个小开关上。
+
+         【滑块用 Margin 动画而不是 TranslateTransform】
+         Margin 由布局系统处理，动画结束后位置仍由布局约束保证正确；
+         TranslateTransform 是渲染期变换，父容器尺寸一变就要重算终点。
+
+         【必须写对称的退出动画】
+         Enter 的动画是 HoldEnd，会一直占住 Margin；不给回程动画，
+         滑块会卡在右侧不动。
+         ============================================================ -->
+    <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <!-- 撑满整行，开关才能真的贴到最右 -->
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent" MinHeight="30">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ContentPresenter Grid.Column="0" VerticalAlignment="Center"
+                                          Margin="0,0,14,0" />
+
+                        <!-- 轨道：深色主题下"关"用比卡片更深的填充 + 描边，
+                             形成"凹槽"感；"开"变成强调蓝，两态一眼能分清。
+                             早先用 SurfaceTopBrush 太接近卡片底色，
+                             截图里开关的开/关几乎看不出区别。 -->
+                        <Border x:Name="Track" Grid.Column="1"
+                                Width="42" Height="24" CornerRadius="12"
+                                Background="#FF2E3440"
+                                BorderBrush="#FF3D4553"
+                                BorderThickness="1"
+                                VerticalAlignment="Center">
+                            <!-- 滑块：关=灰白小圆，开=纯白，配合轨道变色形成对比 -->
+                            <Border x:Name="Knob" Width="18" Height="18"
+                                    CornerRadius="9" Background="#FFA8B0BD"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Margin="2,0,0,0" />
+                        </Border>
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background"
+                                    Value="{StaticResource AccentBrush}" />
+                            <Setter TargetName="Track" Property="BorderBrush"
+                                    Value="{StaticResource AccentBrush}" />
+                            <Setter TargetName="Knob" Property="Background" Value="#FFFFFFFF" />
+
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <!-- 位移 = 轨道宽 - 滑块宽 - 左右各 2px - 边框 2px -->
+                                        <ThicknessAnimation
+                                            Storyboard.TargetName="Knob"
+                                            Storyboard.TargetProperty="Margin"
+                                            To="20,0,0,0" Duration="0:0:0.15">
+                                            <ThicknessAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </ThicknessAnimation.EasingFunction>
+                                        </ThicknessAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ThicknessAnimation
+                                            Storyboard.TargetName="Knob"
+                                            Storyboard.TargetProperty="Margin"
+                                            To="2,0,0,0" Duration="0:0:0.15">
+                                            <ThicknessAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </ThicknessAnimation.EasingFunction>
+                                        </ThicknessAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+
+                        <!-- 悬停只降一点不透明度，不做位移，避免误以为已切换 -->
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Track" Property="Opacity" Value="0.85" />
+                        </Trigger>
+
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
