@@ -898,37 +898,32 @@
                                                            Style="{StaticResource CaptionText}"
                                                            Margin="8,0,0,0" VerticalAlignment="Center" />
                                             </StackPanel>
-                                            <Button Grid.Column="1" Style="{StaticResource CaptionButton}"
-                                                    Content="清空" VerticalAlignment="Center"
+                                            <Button Grid.Column="1" Style="{StaticResource GhostButton}"
+                                                    Content="清空" FontSize="12" Padding="14,6"
+                                                    VerticalAlignment="Center" Margin="8,0,0,0"
                                                     Command="{Binding ClearHistoryCommand}"
                                                     Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}" />
                                         </Grid>
 
-                                        <!-- 搜索：历史多了以后必须能筛 -->
-                                        <TextBox Height="34" Margin="0,12,0,0"
-                                                 Text="{Binding HistoryKeyword, UpdateSourceTrigger=PropertyChanged}"
-                                                 Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
-                                            <TextBox.Resources>
-                                                <VisualBrush x:Key="Hint" x:Shared="False" AlignmentX="Left"
-                                                             Stretch="None">
-                                                    <VisualBrush.Visual>
-                                                        <TextBlock Text="搜索标题或链接…" Margin="13,0,0,0"
-                                                                   Foreground="{StaticResource TextDimBrush}"
-                                                                   FontSize="12" />
-                                                    </VisualBrush.Visual>
-                                                </VisualBrush>
-                                            </TextBox.Resources>
-                                            <TextBox.Style>
-                                                <Style TargetType="TextBox" BasedOn="{StaticResource InputBox}">
-                                                    <Style.Triggers>
-                                                        <Trigger Property="Text" Value="">
-                                                            <Setter Property="Background"
-                                                                    Value="{StaticResource Hint}" />
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBox.Style>
-                                        </TextBox>
+                                        <!--
+                                            搜索框：与第一个卡片（解析输入）保持同一套尺寸 ——
+                                            Height 44 / Padding 13 / FontSize 14，占位提示用独立 TextBlock
+                                            而不是拿 VisualBrush 当背景（那种做法只是凑合，样式一改就不同步了）。
+                                        -->
+                                        <Grid Margin="0,12,0,0"
+                                              Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
+                                            <TextBox Style="{StaticResource InputBox}"
+                                                     Text="{Binding HistoryKeyword, UpdateSourceTrigger=PropertyChanged}"
+                                                     FontSize="14" Padding="13,0" Height="44" />
+                                            <TextBlock Text="搜索标题或链接…"
+                                                       IsHitTestVisible="False"
+                                                       Margin="15,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="14"
+                                                       Foreground="{StaticResource TextDimBrush}"
+                                                       Visibility="{Binding HistoryKeyword,
+                                                         Converter={StaticResource EmptyToVis}}" />
+                                        </Grid>
 
                                         <!-- 列表 -->
                                         <ItemsControl ItemsSource="{Binding History}" Margin="0,10,0,0"
@@ -972,14 +967,18 @@
 
                                                             <StackPanel Grid.Column="2" Orientation="Horizontal"
                                                                         VerticalAlignment="Center">
-                                                                <!-- 载入：整个行都可以点，这里其实只是视觉提示 -->
-                                                                <Button Style="{StaticResource CaptionButton}"
-                                                                        Content="载入"
+                                                                <!--
+                                                                    小按钮统一用 SmallButton（与收藏页一致）。
+                                                                    别用 CaptionButton —— 那是窗口标题栏按钮的样式，
+                                                                    Width 固定 46，套在这里会被撑成过宽的白块。
+                                                                -->
+                                                                <Button Style="{StaticResource SmallButton}"
+                                                                        Content="载入" Padding="11,4"
                                                                         Command="{Binding DataContext.UseHistoryCommand,
                                                                                   RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                         CommandParameter="{Binding}" />
-                                                                <Button Style="{StaticResource CaptionButton}"
-                                                                        Content="删除" Margin="6,0,0,0"
+                                                                <Button Style="{StaticResource SmallButton}"
+                                                                        Content="删除" Padding="11,4" Margin="6,0,0,0"
                                                                         Command="{Binding DataContext.DeleteHistoryCommand,
                                                                                   RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                         CommandParameter="{Binding}" />
