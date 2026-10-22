@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace YunX.Core.Data;
 
@@ -46,6 +46,20 @@ public sealed class PersistedTask
     public string PayloadJson { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>首次真正开始传输的时刻（Unix 秒；0 = 还没开始）。</summary>
+    public long TransferStartAt { get; set; }
+
+    /// <summary>完成时刻（Unix 秒；0 = 未完成）。</summary>
+    public long FinishedAt { get; set; }
+
+    /// <summary>
+    /// 累计传输耗时（秒，只算真正在传的时间）。
+    ///
+    /// <para>单独存一列而不是用 finished - started 相减：暂停、排队、等待用户
+    /// 处理同名冲突的时间都不该算进下载耗时，相减会把它算进去。</para>
+    /// </summary>
+    public long ElapsedSeconds { get; set; }
 }
 
 /// <summary>解析历史条目。</summary>
@@ -148,14 +162,19 @@ public sealed class TaskRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = t.Id > 0
                 ? """
-                  UPDATE download_task SET total_bytes=$total, done_bytes=$done, state=$state,
-                         error=$err, mirror_name=$mirror, payload_json=$payload, updated_at=$upd
+                  UPDATE download_task SET file_name=$name, save_dir=$dir,
+                         total_bytes=$total, done_bytes=$done, state=$state,
+                         error=$err, mirror_name=$mirror, payload_json=$payload,
+                         transfer_start_at=$tstart, finished_at=$fin, elapsed_s=$elapsed,
+                         updated_at=$upd
                    WHERE id=$id
                   """
                 : """
                   INSERT INTO download_task(url, file_name, save_dir, total_bytes, done_bytes,
-                         state, error, mirror_name, payload_json, created_at, updated_at)
-                  VALUES ($url, $name, $dir, $total, $done, $state, $err, $mirror, $payload, $now, $now)
+                         state, error, mirror_name, payload_json,
+                         transfer_start_at, finished_at, elapsed_s, created_at, updated_at)
+                  VALUES ($url, $name, $dir, $total, $done, $state, $err, $mirror, $payload,
+                          $tstart, $fin, $elapsed, $now, $now)
                   """;
 
             if (t.Id > 0) cmd.Parameters.AddWithValue("$id", t.Id);
@@ -168,6 +187,9 @@ public sealed class TaskRepository
             cmd.Parameters.AddWithValue("$err", t.Error);
             cmd.Parameters.AddWithValue("$mirror", t.MirrorName);
             cmd.Parameters.AddWithValue("$payload", t.PayloadJson);
+            cmd.Parameters.AddWithValue("$tstart", t.TransferStartAt);
+            cmd.Parameters.AddWithValue("$fin", t.FinishedAt);
+            cmd.Parameters.AddWithValue("$elapsed", t.ElapsedSeconds);
 
             // ★ $now 与 $upd 必须**都**绑定。
             //
@@ -256,7 +278,8 @@ public sealed class TaskRepository
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $"""
                 SELECT id, url, file_name, save_dir, total_bytes, done_bytes, state,
-                       error, mirror_name, payload_json, created_at, updated_at
+                       error, mirror_name, payload_json, created_at, updated_at,
+                       transfer_start_at, finished_at, elapsed_s
                   FROM download_task
                  WHERE {where}
                  ORDER BY {orderBy}
@@ -282,6 +305,9 @@ public sealed class TaskRepository
                     PayloadJson = r.GetString(9),
                     CreatedAt = FromUnix(r.GetInt64(10)),
                     UpdatedAt = FromUnix(r.GetInt64(11)),
+                    TransferStartAt = r.GetInt64(12),
+                    FinishedAt = r.GetInt64(13),
+                    ElapsedSeconds = r.GetInt64(14),
                 });
             }
             return list;

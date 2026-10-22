@@ -13,7 +13,10 @@
     <!-- 应用图标：既作为 exe 图标，也是托盘图标的来源（TrayIcon.LoadAppIcon 从这里提取）。
          没有它时 exe 用 .NET 默认图标，托盘也会显示成一个没有辨识度的通用方块。 -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
+    <!-- 版本号唯一来源。界面/闪屏/文件属性都从这里来，
+         不要在别处再写一份 —— 之前两处 fallback 各写死 "1.1.0"，
+         升版本时漏改就会出现"关于页显示旧版本"。 -->
+    <Version>1.3.0</Version>
     <!-- 自包含发布：目标机器无需安装 .NET 运行时，双击即用 -->
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

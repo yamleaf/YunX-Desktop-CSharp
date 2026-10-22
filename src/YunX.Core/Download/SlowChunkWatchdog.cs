@@ -1,3 +1,4 @@
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace YunX.Core.Download;
@@ -21,6 +22,55 @@ public sealed class ChunkState : IDisposable
     private long _lastBytes;
     private long _lastSampleTicks;
     private long _lastPreemptTicks;
+
+    /// <summary>
+    /// 本分片被抢占时所在的线路名。
+    ///
+    /// <para><b>为什么要记它</b>：抢占原本只是"断开重连"，但重连仍然用排在最前的
+    /// 那条线路 —— 慢线路上断十次还是慢线路。要让抢占真正有意义，
+    /// 必须让它<b>换一条线</b>，而"要避开哪条"只能由抢占那一刻的现场决定。</para>
+    /// </summary>
+    public string? PreemptedFrom { get; private set; }
+
+    /// <summary>
+    /// 已确认有问题的线路（本分片不再使用）。
+    ///
+    /// <para>实测背景：<c>cdn.gh-proxy.org</c> 的 8 条连接里有 5 条只有 20~44 KB/s，
+    /// 而 <c>gh-proxy.com</c> 同期是 190~250 KB/s。这类连接<b>不会失败</b>，
+    /// 只会一直慢，所以必须显式记住"这条线在这个分片上不行"。</para>
+    /// </summary>
+    private readonly List<string> _avoid = new();
+
+    /// <summary>当前线路不可用：下次重连换别的线。</summary>
+    public void MarkLineBad(string lineName)
+    {
+        if (string.IsNullOrEmpty(lineName)) return;
+        lock (_avoid)
+        {
+            if (!_avoid.Contains(lineName)) _avoid.Add(lineName);
+        }
+        PreemptedFrom = lineName;
+    }
+
+    /// <summary>本分片应避开的线路（尝试次数用尽时会被清空，避免全线被拉黑后卡死）。</summary>
+    public string[] AvoidLines()
+    {
+        lock (_avoid) return _avoid.ToArray();
+    }
+
+    /// <summary>清空避开列表（所有线路都试过了，只能重头再来）。</summary>
+    public void ClearAvoid()
+    {
+        lock (_avoid) _avoid.Clear();
+    }
+
+    /// <summary>
+    /// 本分片当前这条连接用的是哪条线路（由 worker 在每次请求前写入）。
+    ///
+    /// <para>抢占判定时拿不到 URL（它只看到速度），所以要靠这个字段
+    /// 才能知道"该拉黑谁"。</para>
+    /// </summary>
+    public string CurrentLine { get; set; } = "";
 
     public ChunkState(long start, long end, int workerId)
     {
@@ -197,6 +247,10 @@ public sealed class ChunkState : IDisposable
 
     public void RequestPreempt()
     {
+        // ★ 抢占 = 这条线在本分片上不行，下次必须换一条。
+        //   不记录的话，"重连"只是回到同一条慢线上断一次再重连，
+        //   白付一次 TCP+TLS 握手，速度一点没变。
+        MarkLineBad(CurrentLine);
         Interlocked.Exchange(ref _preempt, 1);
         PreemptCount++;
         _lastPreemptTicks = Stopwatch.GetTimestamp();

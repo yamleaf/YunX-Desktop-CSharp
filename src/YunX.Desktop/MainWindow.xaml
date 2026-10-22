@@ -4,6 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:vm="clr-namespace:YunX.Desktop.ViewModels"
         xmlns:views="clr-namespace:YunX.Desktop.Views"
+        xmlns:local="clr-namespace:YunX.Desktop.Views"
         Title="YunX Desktop"
         Icon="Assets/app.ico"
         Height="780" Width="1180" MinHeight="620" MinWidth="920"
@@ -370,8 +371,7 @@
                     </Grid>
 
                     <!-- ========== 解析页 ========== -->
-                    <Grid Visibility="{Binding IsParsePage, Converter={StaticResource BoolToVis}}">
-                        <ScrollViewer x:Name="ParseScrollViewer"
+                    <Grid Visibility="{Binding IsParsePage, Converter={StaticResource BoolToVis}}">                        <ScrollViewer x:Name="ParseScrollViewer"
                                       Style="{StaticResource SlimScrollViewer}"
                                       VerticalScrollBarVisibility="Auto"
                                       Margin="0,0,4,0">
@@ -394,19 +394,31 @@
                                                          Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
                                                          FontSize="14" Padding="13,0" Height="44"
                                                          KeyDown="OnInputKeyDown" />
+                                                <!--
+                                                    占位提示必须和**光标**重合，数值来自实测：
+                                                    GetRectFromCharacterIndex(0).X = 16
+                                                    （1px 描边 + 13 Padding + ScrollViewer 自带 2px）。
+                                                    这个数字不能靠推算，改模板就必须重新量。
+                                                -->
                                                 <TextBlock Text="粘贴 GitHub 链接或网盘分享链接…"
                                                            IsHitTestVisible="False"
-                                                           Margin="15,0,0,0"
+                                                           Padding="16,0,0,0"
                                                            VerticalAlignment="Center"
                                                            FontSize="14"
                                                            Foreground="{StaticResource TextDimBrush}"
                                                            Visibility="{Binding InputText,
                                                              Converter={StaticResource EmptyToVis}}" />
                                             </Grid>
+                                            <!--
+                                                清空（原来是「粘贴」）。
+                                                粘贴本身 Ctrl+V 就能做，而清空是刚需：
+                                                粘错链接、或连续解析不同链接时都要先全选删除。
+                                            -->
                                             <Button Grid.Column="1" Style="{StaticResource GhostButton}"
-                                                    Command="{Binding PasteCommand}"
+                                                    Command="{Binding ClearInputCommand}"
                                                     Margin="8,0,0,0" Padding="14,11"
-                                                    Content="粘贴" />
+                                                    Content="清空"
+                                                    ToolTip="清空输入框。为避免与下方「解析历史 · 清空」混淆，这里只对输入框生效" />
                                         </Grid>
 
                                         <WrapPanel Margin="0,11,0,0">
@@ -780,14 +792,27 @@
                                                                               Margin="12,5" FontSize="12"
                                                                               Visibility="{Binding IsFile,
                                                                                 Converter={StaticResource BoolToVis}}">
+                                                                        <!--
+                                                                            必须是两列，不能叠在同一个格里。
+                                                                            叠放时「名字靠左 + MaxWidth 截断」和「大小靠右」会互相压：
+                                                                            长文件名的尾部（如 .sha256）正好盖在 "117 B" 上。
+                                                                            分列后名字在自己的列内截断，大小永远有一块固定位置。
+                                                                        -->
                                                                         <Grid MinWidth="380">
-                                                                            <TextBlock Text="{Binding Name}"
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="Auto" />
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBlock Grid.Column="0"
+                                                                                       Text="{Binding Name}"
                                                                                        FontSize="12"
                                                                                        TextTrimming="CharacterEllipsis"
-                                                                                       MaxWidth="420" />
-                                                                            <TextBlock Text="{Binding SizeText}"
+                                                                                       VerticalAlignment="Center"
+                                                                                       Margin="0,0,10,0" />
+                                                                            <TextBlock Grid.Column="1"
+                                                                                       Text="{Binding SizeText}"
                                                                                        FontSize="11"
-                                                                                       HorizontalAlignment="Right"
+                                                                                       VerticalAlignment="Center"
                                                                                        Foreground="{StaticResource TextDimBrush}" />
                                                                         </Grid>
                                                                     </CheckBox>
@@ -806,8 +831,14 @@
                                                                             ToolTip="进入这个目录"
                                                                             Visibility="{Binding IsDirectory,
                                                                               Converter={StaticResource BoolToVis}}">
+                                                                        <!-- 同「文件」分支：两列布局，避免长目录名压到「进入 ›」 -->
                                                                         <Grid MinWidth="380">
-                                                                            <StackPanel Orientation="Horizontal"
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="Auto" />
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <StackPanel Grid.Column="0"
+                                                                                        Orientation="Horizontal"
                                                                                         VerticalAlignment="Center">
                                                                                 <Path Data="{StaticResource IconFolder}"
                                                                                       Width="13" Height="13"
@@ -819,12 +850,12 @@
                                                                                            Margin="7,0,0,0"
                                                                                            VerticalAlignment="Center"
                                                                                            TextTrimming="CharacterEllipsis"
-                                                                                           MaxWidth="360"
                                                                                            Foreground="{DynamicResource AccentBrush}" />
                                                                             </StackPanel>
-                                                                            <TextBlock Text="进入 ›"
+                                                                            <TextBlock Grid.Column="1"
+                                                                                       Text="进入 ›"
                                                                                        FontSize="11"
-                                                                                       HorizontalAlignment="Right"
+                                                                                       Margin="10,0,0,0"
                                                                                        VerticalAlignment="Center"
                                                                                        Foreground="{StaticResource TextDimBrush}" />
                                                                         </Grid>
@@ -915,9 +946,10 @@
                                             <TextBox Style="{StaticResource InputBox}"
                                                      Text="{Binding HistoryKeyword, UpdateSourceTrigger=PropertyChanged}"
                                                      FontSize="14" Padding="13,0" Height="44" />
+                                            <!-- 与输入框同规则：占位起点 = 实测 16（描边1 + Padding13 + ScrollViewer 2） -->
                                             <TextBlock Text="搜索标题或链接…"
                                                        IsHitTestVisible="False"
-                                                       Margin="15,0,0,0"
+                                                       Padding="16,0,0,0"
                                                        VerticalAlignment="Center"
                                                        FontSize="14"
                                                        Foreground="{StaticResource TextDimBrush}"
@@ -1028,6 +1060,7 @@
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
+
                     </Grid>
 
                     <!-- ========== 下载页 ========== -->
@@ -1102,6 +1135,8 @@
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <!-- 时间信息一行（开始 / 用时 / 完成） -->
                                                         <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
 
@@ -1228,6 +1263,20 @@
                                                                        Margin="12,0,0,0" />
                                                         </StackPanel>
                                                     </Grid>
+
+                                                    <!--
+                                                        时间信息：开始 / 用时 / 完成。
+                                                        和上面那行（状态+进度+速度）分开，是因为它在任务结束后
+                                                        仍然有内容可看（"今天 14:32 开始 · 用时 1 分 23 秒 · 今天 14:33 完成"），
+                                                        而状态行在完成时只剩一个「已完成」。
+                                                        文案由 VM 的 TimeSummary 拼好，避免这里堆一堆格式化转换器。
+                                                    -->
+                                                    <TextBlock Grid.Row="3"
+                                                               Text="{Binding TimeSummaryWithDir}"
+                                                               FontSize="11"
+                                                               Margin="39,6,0,0"
+                                                               Foreground="{StaticResource TextDimBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -1783,11 +1832,40 @@
                                 <Border Style="{StaticResource Card}" Padding="18">
                                     <StackPanel>
                                         <TextBlock Text="Personal Access Token" FontSize="13" />
-                                        <TextBlock Text="填入后提高 API 限额、支持私有仓库。私有仓库只走直连（镜像不转发鉴权头）"
+                                        <TextBlock Text="可选。填了可以把 API 限额从 60 次/小时提到 5000 次/小时、并支持私有仓库。私有仓库只走直连（镜像不转发鉴权头）"
                                                    Style="{StaticResource CaptionText}"
                                                    TextWrapping="Wrap" Margin="0,4,0,9" />
                                         <PasswordBox x:Name="TokenBox"
                                                      Style="{StaticResource InputPassword}" />
+
+                                        <!--
+                                            API 配额状态。
+                                            匿名只有 60 次/小时，用完就 403，而从"解析失败"的报错里
+                                            完全看不出是这个原因 —— 提前把剩余次数摆出来才有用。
+                                            数据来自响应头 X-RateLimit-*，不额外发请求。
+                                        -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                                            <TextBlock Text="API 配额" FontSize="11.5"
+                                                       Foreground="{StaticResource TextDimBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding ApiQuotaText}" FontSize="11.5"
+                                                       Margin="8,0,0,0" VerticalAlignment="Center"
+                                                       TextWrapping="Wrap">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground"
+                                                                Value="{StaticResource TextMutedBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ApiQuotaLow}"
+                                                                         Value="True">
+                                                                <Setter Property="Foreground"
+                                                                        Value="{StaticResource ErrBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
                                         <TextBlock Text="{Binding TokenError}"
                                                    FontSize="11.5"
                                                    Foreground="{StaticResource ErrBrush}"
@@ -2033,6 +2111,58 @@
                         </Grid>
                     </Border>
                 </Grid>
+                <!--
+                    解析遮罩（覆盖整个主体：侧栏 + 内容区）。
+
+                    ★ 解析要经过「探测仓库 → 抓资产 → 线路测速」，合计 1~3 秒。
+                      期间界面完全不动，用户无法区分「在干活」和「卡死」。
+                    ★ 之所以放在主体层而不是解析页内部：只盖内容区时，侧栏仍然可点，
+                      用户会以为能切走，实际请求还在跑，观感很怪。
+                    ★ 底色不能太黑：整窗压暗会让人以为程序失去响应，半透明即可。
+                -->
+                <Grid Grid.ColumnSpan="2"
+                      Background="#8E0B0E13"
+                      Visibility="{Binding ShowParseOverlay,
+                        Converter={StaticResource BoolToVis}}">
+                    <Border Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="12"
+                            Padding="26,22" MinWidth="240"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="26" ShadowDepth="0"
+                                              Opacity="0.55" Color="Black" />
+                        </Border.Effect>
+                        <StackPanel Orientation="Horizontal">
+                            <Grid Style="{StaticResource BusyRing}" VerticalAlignment="Center">
+                                <!-- 底环：整圈暗色，让缺口环有参照 -->
+                                <Ellipse Stroke="#2A303C" StrokeThickness="3" />
+                                <!-- 缺口环：只画约 1/4 圈，配合旋转就是转圈 -->
+                                <Ellipse Stroke="{StaticResource AccentBrush}"
+                                         StrokeThickness="3"
+                                         StrokeDashArray="6 18"
+                                         StrokeStartLineCap="Round"
+                                         StrokeEndLineCap="Round"
+                                         RenderTransformOrigin="0.5,0.5">
+                                    <Ellipse.RenderTransform>
+                                        <RotateTransform Angle="-90" />
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                            </Grid>
+
+                            <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="正在解析"
+                                           FontSize="13.5" FontWeight="Medium" />
+                                <TextBlock Text="{Binding ParseStage}"
+                                           Style="{StaticResource CaptionText}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="320" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Grid>
 
             <!-- ================= 状态栏 ================= -->
@@ -2080,6 +2210,14 @@
                                VerticalAlignment="Center" />
                 </Grid>
             </Grid>
+
+            <!--
+                浮层通知宿主。
+                放在最外层 Grid 的最后一个子元素，横跨三行（含标题栏与状态栏），
+                这样 Toast 永远浮在最上面，不会被内容区裁掉。
+                IsHitTestVisible=False 在控件内部处理，只有卡片本身可点。
+            -->
+            <local:ToastHost x:Name="Toasts" Grid.Row="0" Grid.RowSpan="3" />
         </Grid>
     </Border>
 </Window>

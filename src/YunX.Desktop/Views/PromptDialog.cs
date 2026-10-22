@@ -160,15 +160,20 @@ public sealed class PromptDialog : DialogShell
     /// </summary>
     private static void LockSizeBeforeShow(Window dialog)
     {
-        dialog.SizeToContent = SizeToContent.Manual;
+        // ★ 高度交给 WPF 自己量，不要手动 Measure 再写死。
+        //
+        //   早期这里 `dialog.Measure(width, ∞)` 后把 DesiredSize.Height 赋给 Height。
+        //   但窗口还没进视觉树时，内容根本没参与布局，量出来接近 0，
+        //   于是落到兜底的 200 —— 而「删除下载记录」这类多行正文的弹窗实际要 230+，
+        //   按钮就被挤到窗口底部之外，只露出上半截。
+        //
+        //   SizeToContent.Height 会在真正显示时按内容算高度，是这件事的权威做法。
+        //   宽度仍然显式给（由 Choose 按按钮数量算好），不受影响。
+        dialog.SizeToContent = SizeToContent.Height;
 
-        // 宽度已知时，只需量出高度。用无限高约束测一次，拿到内容真实高度。
-        dialog.Measure(new Size(dialog.Width > 0 ? dialog.Width : 520, double.PositiveInfinity));
-        var desired = dialog.DesiredSize;
-
-        double h = desired.Height;
-        if (double.IsNaN(h) || h <= 0) h = 200;
-        dialog.Height = h;
+        // 高度上限：长正文不至于把窗口顶出屏幕。超过时正文区自己滚动。
+        double maxH = SystemParameters.WorkArea.Height * 0.8;
+        if (dialog.MaxHeight <= 0 || dialog.MaxHeight > maxH) dialog.MaxHeight = maxH;
     }
 
     /// <summary>
@@ -189,6 +194,30 @@ public sealed class PromptDialog : DialogShell
         // 退而用 Width/Height（Choose 走这条，构造时就设了）。
         double w = dialog.ActualWidth > 0 ? dialog.ActualWidth : dialog.Width;
         double h = dialog.ActualHeight > 0 ? dialog.ActualHeight : dialog.Height;
+
+        // ★ 高度未知时不能瞎猜。
+        //   SizeToContent.Height 的窗口在显示前 Height 是 NaN，早期这里兜底成 200，
+        //   结果多行正文的弹窗位置偏上（按钮还容易贴到屏幕边缘）。
+        //   现在：等布局真正算完再摆位置。
+        if (double.IsNaN(h) || h <= 0)
+        {
+            dialog.SizeToContent = SizeToContent.Height;
+            dialog.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            dialog.Loaded += (_, _) =>
+            {
+                double realH = dialog.ActualHeight > 0 ? dialog.ActualHeight : dialog.Height;
+                PlaceCentered(dialog, dialog.ActualWidth > 0 ? dialog.ActualWidth : dialog.Width,
+                    realH);
+            };
+            return;
+        }
+
+        PlaceCentered(dialog, w, h);
+    }
+
+    /// <summary>按显示器工作区把窗口摆到正中（w/h 必须是已知的真实尺寸）。</summary>
+    private static void PlaceCentered(Window dialog, double w, double h)
+    {
         if (double.IsNaN(w) || w <= 0) w = 520;
         if (double.IsNaN(h) || h <= 0) h = 200;
 
@@ -310,21 +339,105 @@ public sealed class PromptDialog : DialogShell
     }
 
     /// <summary>
+    /// 告警弹窗：只有一个「知道了」按钮。
+    ///
+    /// <para><b>与 <see cref="Choose"/> 的区别</b>：Choose 是"要你做决定"，
+    /// Alert 是"告知你出事了"。后者不该让用户在一个选项里挑，
+    /// 也不该有"取消/确定"双按钮 —— 那暗示了还有选择的余地。</para>
+    ///
+    /// <para>标题栏的 ✕ 与「知道了」等价（都只是关闭），不改变任何状态。</para>
+    /// </summary>
+    /// <param name="detail">补充说明（可能较长，正文区可滚动）</param>
+    public static void Alert(string title, string message, string primaryText = "知道了")
+    {
+        var win = new DialogShell
+        {
+            Title = title,
+            Width = 520,
+            SizeToContent = SizeToContent.Manual,
+        };
+        AttachOwner(win);
+
+        var root = new StackPanel { Margin = new Thickness(20) };
+
+        // 与 Choose 一致：正文可滚动，避免长文案把按钮挤出窗口
+        root.Children.Add(new ScrollViewer
+        {
+            Content = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.Resources["TextBrush"],
+                LineHeight = 20,
+            },
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxHeight = 360,
+            Margin = new Thickness(0, 0, 0, 16),
+        });
+
+        root.Children.Add(new Border
+        {
+            Height = 1,
+            Background = (Brush)Application.Current.Resources["BorderBrush"],
+            Margin = new Thickness(-20, 18, -20, 0),
+        });
+
+        // 按钮右对齐、不用整行均分：确认类弹窗只该有一个动作，
+        // 铺满整行会让它显得像"选择"而不是"确认"。
+        var bar = new Grid { Margin = new Thickness(0, 14, 0, 0) };
+        var btn = MakeButton(primaryText, 0, isPrimary: true,
+            onClick: () => win.Close(), isDefault: true);
+        btn.HorizontalAlignment = HorizontalAlignment.Right;
+        btn.MinWidth = 96;
+        bar.Children.Add(btn);
+        root.Children.Add(bar);
+
+        var outer = new StackPanel();
+        outer.Children.Add(win.BuildHeader(title));
+        outer.Children.Add(new Border
+        {
+            Height = 1,
+            Background = (Brush)Application.Current.Resources["BorderBrush"],
+        });
+        outer.Children.Add(root);
+        win.Content = outer;
+
+        LockSizeBeforeShow(win);
+        CenterOnScreen(win);
+        win.ShowDialog();
+    }
+
+    /// <summary>
     /// 多选一（登录方式选择 / 危险操作确认）。
     /// 返回**选项下标**；取消返回 -1。
     ///
     /// <para>为什么不用 MessageBox：它只支持「是/否/取消」三种固定文案，
     /// 而这里要「内嵌登录 / 从浏览器导入 / 手动粘贴」三个业务动作。</para>
     ///
-    /// <para><b>注意</b>：取消按钮由本方法自动追加，调用方**不要**再把「取消」
-    /// 当成一个 option 传进来 —— 那会出现「清空 / 取消 / 取消」三个按钮。</para>
+    /// <para><b>注意</b>：不再自动追加「取消」按钮 —— 标题栏右上角的 ✕ 就是取消
+    /// （关窗返回 -1）。调用方也不必再传一个「取消」option。</para>
     /// </summary>
+    /// <param name="primaryIndex">
+    /// 用强调色显示的选项下标；<b>-1 表示没有主操作</b>（全部灰底）。
+    ///
+    /// <para><b>为什么必须显式指定而不是按位置猜</b>：选项顺序的语义并不一致 ——
+    /// 「覆盖原文件 / 自定义文件名」里安全的是后者，
+    /// 「仅删除记录 / 记录和文件一起删除」里危险的是后者，
+    /// 而「内嵌登录 / 从浏览器导入 / 手动粘贴」根本没有主次。
+    /// 靠「最后一个 / 第一个」去推断总会错一半，所以交给调用方说清楚。</para>
+    /// </param>
     public static int Choose(string title, string message, params string[] options)
+        => ChooseWithPrimary(title, message, -1, options);
+
+    /// <summary>带主操作指示的 <see cref="Choose"/>。见 <c>primaryIndex</c> 的说明。</summary>
+    public static int ChooseWithPrimary(string title, string message, int primaryIndex,
+        params string[] options)
     {
-        // 宽度按按钮数量放大：4 个按钮挤在 520px 里每格只有 ~120px，
-        // 像「从本机浏览器导入（推荐）」这种长文案必然被切。
+        // 宽度按按钮数量放大：按钮挤在 520px 里每格太窄，长文案必然被切。
         // 中文 13px 左右一个按钮文案约 14 字 = ~185px，留 190px/个足够。
-        int buttonCount = options.Length + 1;
+        // 取消了「取消」按钮，数量就是 options.Length（关窗 = 取消，见上）。
+        int buttonCount = Math.Max(1, options.Length);
         double minWidth = Math.Max(520, buttonCount * 190 + 56);
 
         // 用自绘外壳，不用系统标题栏 —— 系统标题栏的客户区会在 WPF 首帧之前
@@ -343,12 +456,23 @@ public sealed class PromptDialog : DialogShell
         int result = -1;
         var root = new StackPanel { Margin = new Thickness(20) };
 
-        root.Children.Add(new TextBlock
+        // 正文放进可滚动容器：路径很长 / 行数很多时，窗口高度被 MaxHeight 限制，
+        // 按钮栏会被挤出可视区 —— 那是最恶劣的情况（看得见提示、点不到按钮）。
+        var messageBlock = new TextBlock
         {
             Text = message,
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["TextBrush"],
+        };
+        root.Children.Add(new ScrollViewer
+        {
+            Content = messageBlock,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            // 上限按窗口高度的一半留给正文，其余给标题栏与按钮栏
+            MaxHeight = 320,
             Margin = new Thickness(0, 0, 0, 16),
+            // 正文里可能出现很长且无空格的路径，必须允许换行（默认已 Wrap）
         });
 
         // 单个选项 = 确认类对话框（如"清空收藏"），按钮横排在右下角，符合 Windows 惯例。
@@ -369,34 +493,23 @@ public sealed class PromptDialog : DialogShell
         // 每个按钮占一列 *，列之间插 8px 固定缝隙列（用 Margin 做间隔会让各格宽度不等）。
         // 按钮多的时候窗口已经按数量加宽了（见上面的 minWidth），所以每格仍然够放文案。
         //
-        // 顺序：单选项（确认类）「取消」在左、主操作在右，符合 Windows 习惯；
-        //       多选项「取消」放最后，扫一遍就是"选一个，或者不选"。
-        int buttonTotal = options.Length + 1;
+        // ★ 不再放「取消」按钮：标题栏右上角的 ✕ 就是取消（关窗 = 返回 -1），
+        //   再放一个纯属重复，还把有限宽度挤给主操作、导致文案被切。
+        var buttons = options;
+        int buttonTotal = buttons.Length;
         for (int i = 0; i < buttonTotal; i++)
         {
             if (i > 0) bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
 
-        if (options.Length == 1)
+        for (int i = 0; i < buttons.Length; i++)
         {
-            bar.Children.Add(MakeButton("取消", 0, isPrimary: false,
-                onClick: () => { result = -1; win.Close(); }, isDefault: false));
-
-            bar.Children.Add(MakeButton(options[0], 2, isPrimary: true,
-                onClick: () => { result = 0; win.Close(); }, isDefault: true));
-        }
-        else
-        {
-            for (int i = 0; i < options.Length; i++)
-            {
-                int idx = i;
-                bar.Children.Add(MakeButton(options[i], i * 2, isPrimary: false,
-                    onClick: () => { result = idx; win.Close(); }, isDefault: false));
-            }
-
-            bar.Children.Add(MakeButton("取消", options.Length * 2, isPrimary: false,
-                onClick: () => { result = -1; win.Close(); }, isDefault: false));
+            int idx = i;
+            // 主操作由调用方指定；未指定（-1）时全部灰底，表示「纯选择，无主次」。
+            bool primary = i == primaryIndex;
+            bar.Children.Add(MakeButton(buttons[i], i * 2, isPrimary: primary,
+                onClick: () => { result = idx; win.Close(); }, isDefault: primary));
         }
 
         root.Children.Add(bar);

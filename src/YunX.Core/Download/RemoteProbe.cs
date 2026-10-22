@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using YunX.Core.Mirrors;
 using YunX.Core.Net;
 using YunX.Core.Util;
@@ -55,10 +55,16 @@ public sealed class RemoteProbe
     public async Task<RemoteInfo> ProbeAsync(MirrorPool pool, string url,
         string fallbackName = "download.bin", Action<string>? log = null,
         CancellationToken ct = default,
-        IReadOnlyDictionary<string, string>? headers = null)
+        IReadOnlyDictionary<string, string>? headers = null,
+        Action<string>? phase = null)
     {
+        // ★ 探测是下载里最容易被误认为「卡死」的一段：要逐条线路测速、
+        //   再取远端信息，几秒钟内界面毫无变化。这里分两步上报，让用户看到在动。
+        phase?.Invoke(DownloadPhase.TestingMirrors);
         var candidates = await pool.OrderedUrlsAsync(url, force: false, log, ct)
             .ConfigureAwait(false);
+
+        phase?.Invoke(DownloadPhase.Inspecting);
 
         string lastError = "无可用线路";
         int saw404 = 0, tried = 0;
@@ -155,7 +161,19 @@ public sealed class RemoteProbe
                     if (rangeOk) return info;
                     fallback ??= info;
                 }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // ★ 用户主动取消（暂停/删除）必须原样上抛，绝不能被记成"线路失败"。
+                    //
+                    //   早期这里的超时 catch 带 `when (!ct.IsCancellationRequested)`，
+                    //   于是主动取消不匹配该分支、落到下面的兜底 catch，
+                    //   被记成 lastError = "TaskCanceledException"，最后抛
+                    //   「所有线路均不可用（TaskCanceledException）」——
+                    //   用户点一下暂停，看到的是一次失败，任务从 Paused 变成 Failed。
+                    //   而且这些线路还会被误算进失败次数、进冷却。
+                    throw;
+                }
+                catch (OperationCanceledException)
                 {
                     lastError = "连接超时";
                 }

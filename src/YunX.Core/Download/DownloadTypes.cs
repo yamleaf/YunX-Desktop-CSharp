@@ -1,4 +1,4 @@
-namespace YunX.Core.Download;
+﻿namespace YunX.Core.Download;
 
 /// <summary>下载行为选项。</summary>
 public sealed class DownloadOptions
@@ -82,6 +82,54 @@ public sealed class DownloadOptions
     /// 取消/失败留下的 <c>.part</c> 就再没有入口能清理了。</para>
     /// </summary>
     public Action<string>? OnPartPathResolved { get; set; }
+
+    /// <summary>
+    /// 实际落盘文件名确定时回调（<b>可能和请求的名字不同</b>）。
+    ///
+    /// <para><b>为什么需要</b>：同目录已有同名文件时，<c>FileNamePolicy.EnsureUnique</c>
+    /// 会改成 <c>name (1).ext</c>。界面若继续显示请求时的名字，就会出现
+    /// 「两个任务都叫 X」而磁盘上是 <c>X</c> 和 <c>X (1)</c> —— 用户无法分辨哪个是新的。</para>
+    /// </summary>
+    public Action<string>? OnFileNameResolved { get; set; }
+
+    /// <summary>
+    /// 目标目录已有同名文件时怎么办（由上层询问用户后决定）。
+    ///
+    /// <para>null = 未提供决策，沿用默认策略（自动改名 <c>name (1).ext</c>）。</para>
+    ///
+    /// <para><b>为什么这个决策必须由上层来做</b>：Core 是纯逻辑层，弹不出窗口。
+    /// 引擎能做的只是「发现冲突 → 问一下 → 按答复执行」，窗口由 Desktop 弹。</para>
+    /// </summary>
+    public Func<NameConflict, NameConflictDecision>? ResolveNameConflict { get; set; }
+}
+
+/// <summary>同名文件冲突的描述。</summary>
+public sealed record NameConflict(string FileName, string Directory, long ExistingSize);
+
+/// <summary>
+/// 用户对同名冲突的处理结果。
+///
+/// <para><b>为什么不是只返回一个枚举</b>：「重命名文件」需要把用户输入的名字带回引擎，
+/// 而 <see cref="DownloadAsync"/> 的 fileName 参数在调用前就已求值，回调改不了它。
+/// 所以把名字装在这里返回，由引擎自己采用。</para>
+/// </summary>
+public readonly record struct NameConflictDecision(NameConflictChoice Choice, string? NewName = null)
+{
+    public static NameConflictDecision AutoRename => new(NameConflictChoice.AutoRename);
+    public static NameConflictDecision Overwrite => new(NameConflictChoice.Overwrite);
+    public static NameConflictDecision Cancel => new(NameConflictChoice.Cancel);
+    public static NameConflictDecision Rename(string name) => new(NameConflictChoice.AutoRename, name);
+}
+
+/// <summary>用户对同名冲突的选择。</summary>
+public enum NameConflictChoice
+{
+    /// <summary>自动改名（默认，最安全：不覆盖任何东西）。</summary>
+    AutoRename,
+    /// <summary>覆盖已有文件：删掉它，用原名重新下。</summary>
+    Overwrite,
+    /// <summary>用户取消本次下载。</summary>
+    Cancel,
 }
 
 /// <summary>下载进度快照。</summary>
@@ -122,7 +170,18 @@ public sealed class DownloadResult
 /// <summary>下载阶段（用于 UI 与日志）。</summary>
 public static class DownloadPhase
 {
+    /// <summary>探测总称（兜底用；细分为下面两条，界面上会看到具体是哪一步）。</summary>
     public const string Probing = "探测中";
+
+    /// <summary>正在测速各条线路（含镜像），挑最快的那条。</summary>
+    public const string TestingMirrors = "测速线路中";
+
+    /// <summary>已选定线路，正在取文件大小 / ETag / Range 支持情况。</summary>
+    public const string Inspecting = "获取文件信息";
+
+    /// <summary>正在规划分片（按总长和线程数切块）。</summary>
+    public const string Planning = "规划分片中";
+
     public const string Downloading = "下载中";
     public const string Merging = "合并中";
     public const string Verifying = "校验中";

@@ -66,7 +66,129 @@ public sealed class DownloadTaskViewModel : ObservableObject
     /// </summary>
     public long DbId { get => _dbId; set => SetProperty(ref _dbId, value); }
 
-    public DateTime StartedAt { get; } = DateTime.Now;
+    /// <summary>入队时间（进程内首次创建）。重启恢复时由数据库的 created_at 覆盖。</summary>
+    public DateTime StartedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// 真正开始传输的时刻（首次进入 Running）。
+    ///
+    /// <para><b>为什么不直接用 <see cref="StartedAt"/></b>：任务可能排队很久才轮到，
+    /// 也可能「继续」过好几次。「下载从什么时候开始」指的是真正在传数据那一刻。</para>
+    /// </summary>
+    public DateTime? TransferStartedAt
+    {
+        get => _transferStartedAt;
+        set { if (SetProperty(ref _transferStartedAt, value)) NotifyTimeDerived(); }
+    }
+    private DateTime? _transferStartedAt;
+
+    /// <summary>完成时刻（进入 Done / Failed / Cancelled 时定格）。</summary>
+    public DateTime? FinishedAt
+    {
+        get => _finishedAt;
+        set { if (SetProperty(ref _finishedAt, value)) NotifyTimeDerived(); }
+    }
+    private DateTime? _finishedAt;
+
+    /// <summary>
+    /// 累计传输耗时（TickCount 口径，只统计真正在跑的时间）。
+    ///
+    /// <para><b>为什么不用「结束时刻 - 开始时刻」</b>：暂停、排队、等待用户处理同名冲突
+    /// 这些时间都不该算进「下载耗时」。用累计运行时长才反映真实速度，
+    /// 也才能算出有意义的平均速度。断点续传的历次耗时同样会累加。</para>
+    /// </summary>
+    public TimeSpan Elapsed
+    {
+        get => _elapsed;
+        set { if (SetProperty(ref _elapsed, value)) NotifyTimeDerived(); }
+    }
+    private TimeSpan _elapsed;
+
+    /// <summary>本次运行开始计时的墙钟点（Stopwatch 语义用，不进 UI 绑定）。</summary>
+    public DateTime? RunStartedAt { get; set; }
+
+    /// <summary>
+    /// 时间一行的展示文案：「今天 14:32 开始 · 用时 1分23秒 · 今天 14:33 完成」。
+    ///
+    /// <para>放在 ViewModel 里而不是 XAML 里的 MultiBinding：日期格式化 + 相对时间
+    /// + 千奇百怪的边界（未开始、未完成、跨天）用转换器写会变成一坨，
+    /// 集中在一处更好读也更好测。</para>
+    /// </summary>
+    public string TimeSummary
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+
+            if (TransferStartedAt is { } start)
+                sb.Append(DescribeWhen(start)).Append(" 开始");
+            else
+                sb.Append("尚未开始");
+
+            if (Elapsed > TimeSpan.Zero)
+                sb.Append(" · 用时 ").Append(DescribeSpan(Elapsed));
+
+            if (FinishedAt is { } end)
+                sb.Append(" · ").Append(DescribeWhen(end)).Append(" 完成");
+
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>「今天 14:32」「昨天 09:05」「10-20 18:11」——列表里空间有限，不写年份。</summary>
+    private static string DescribeWhen(DateTime t)
+    {
+        var today = DateTime.Today;
+        string hm = t.ToString("HH:mm");
+        if (t.Date == today) return "今天 " + hm;
+        if (t.Date == today.AddDays(-1)) return "昨天 " + hm;
+        return t.ToString("MM-dd HH:mm");
+    }
+
+    /// <summary>人读的时长：「45 秒」「1 分 23 秒」「2 小时 05 分」。</summary>
+    public static string DescribeSpan(TimeSpan d)
+    {
+        if (d < TimeSpan.Zero) d = TimeSpan.Zero;
+        if (d.TotalSeconds < 1) return "不到 1 秒";
+        if (d.TotalMinutes < 1) return $"{(int)d.TotalSeconds} 秒";
+        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes} 分 {d.Seconds:00} 秒";
+        return $"{(int)d.TotalHours} 小时 {d.Minutes:00} 分";
+    }
+
+    /// <summary>时间相关字段变了，连带通知合并文案。</summary>
+    private void NotifyTimeDerived()
+    {
+        OnPropertyChanged(nameof(TimeSummary));
+        OnPropertyChanged(nameof(TimeSummaryWithDir));
+    }
+
+    private bool _showDir;
+
+    /// <summary>
+    /// 是否在时间行里附带保存目录。
+    ///
+    /// <para><b>为什么需要</b>：文件名相同不代表是同一个文件 ——
+    /// 下到不同目录的两个 <c>rg.zip</c> 在列表里长得一模一样，
+    /// 用户根本分不清哪条是哪条（点「定位」才发现跳到了别处）。</para>
+    ///
+    /// <para>由 <see cref="MainViewModel"/> 在任务列表变化时统一设置：
+    /// 只有当存在同名任务时才置 true，否则不显示 —— 目录路径很长，
+    /// 每条都带上会把界面搞得很吵。</para>
+    /// </summary>
+    public bool ShowDir
+    {
+        get => _showDir;
+        set
+        {
+            if (SetProperty(ref _showDir, value))
+                OnPropertyChanged(nameof(TimeSummaryWithDir));
+        }
+    }
+
+    /// <summary>时间行 + （需要时）保存目录。</summary>
+    public string TimeSummaryWithDir => ShowDir && SaveDir.Length > 0
+        ? TimeSummary + " · 保存到 " + SaveDir
+        : TimeSummary;
 
     /// <summary>
     /// 本任务实际的下载目录（入队时的设置快照）。

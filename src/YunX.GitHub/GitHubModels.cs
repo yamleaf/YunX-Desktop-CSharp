@@ -1,4 +1,4 @@
-using YunX.Core.Mirrors;
+﻿using YunX.Core.Mirrors;
 
 namespace YunX.GitHub;
 
@@ -86,6 +86,14 @@ public sealed class ResolvedContent
     /// <summary>是否来自某个具体仓库（可用于浏览文件树）。</summary>
     public bool HasRepo => !string.IsNullOrEmpty(Owner) && !string.IsNullOrEmpty(Repo);
 
+    /// <summary>
+    /// 解析阶段实测出来的最优线路名（如 <c>gh-proxy.com</c>）；空 = 没测。
+    ///
+    /// <para>只用于在界面上告诉用户「这个文件会走哪条线路」。真正下载时引擎仍会
+    /// 按真实 URL 重新择优一次 —— 解析到下载之间可能相隔很久，线路状况会变。</para>
+    /// </summary>
+    public string BestMirror { get; init; } = "";
+
     public bool IsMulti => Items.Count > 1;
 }
 
@@ -93,4 +101,16 @@ public sealed class ResolvedContent
 public sealed class ParseException : Exception
 {
     public ParseException(string message) : base(message) { }
+}
+
+/// <summary>
+/// 解析超时：整个解析流程超过预算时间。
+///
+/// <para><b>为什么要单独一类</b>：超时的处理方式和"链接不支持"完全不同 ——
+/// 后者要用户改链接，前者只要重试或换线路。混在一起报错，用户会以为链接错了。
+/// 界面上也要给不同的建议文案。</para>
+/// </summary>
+public sealed class ParseTimeoutException : Exception
+{
+    public ParseTimeoutException(string message) : base(message) { }
 }

@@ -116,17 +116,29 @@ public sealed class DownloadEngine
         var probe = new RemoteProbe(client);
         // headers 必须一起传：网盘直链的 Referer / Cookie 在探测阶段同样是硬校验
         var info = await probe.ProbeAsync(_pool, url, fileName ?? "download.bin", log, ct,
-                options.Headers)
+                options.Headers,
+                // 探测阶段细分成「测速线路中 → 获取文件信息」，避免界面长期停在笼统的「探测中」
+                phase: p => progress?.Report(new DownloadProgress(0, 0, 0, p)))
             .ConfigureAwait(false);
 
         string desiredName = FileNamePolicy.SanitizeFileName(fileName ?? info.FileName);
 
         // ---- 2. 决定目标路径：能续传就复用既有 part ----
-        var (target, part, meta) = ResolvePaths(outDir, desiredName, info, url, options);
+        var (target, part, meta, actualName) = ResolvePaths(outDir, desiredName, info, url, options);
         bool resumed = meta != null && meta.Done.Count > 0;
 
         // 把断点落点告诉上层：取消/失败后 part 会保留，用户删任务时需要一个路径来回收它
         try { options.OnPartPathResolved?.Invoke(part); } catch { /* 回调失败不影响下载 */ }
+
+        // ★ 名字可能被改过（同目录已有同名文件 → "name (1).ext"）。
+        //   必须把实际名字回报给上层，否则界面上两个任务会显示成同一个名字，
+        //   而磁盘上是两个文件 —— 用户根本分不清哪个是这次下的。
+        if (!string.Equals(actualName, desiredName, StringComparison.Ordinal))
+        {
+            log?.Invoke($"同名文件已存在，本次保存为：{actualName}");
+            try { options.OnFileNameResolved?.Invoke(actualName); }
+            catch { /* 回调失败不影响下载 */ }
+        }
 
         // 新建的目标名在 FileNamePolicy 里是「预留」过的（防止并发任务抢同一路径）。
         // 无条件释放：任务成功时文件已存在、失败/取消时 .part 还在，这两种情况
@@ -253,7 +265,7 @@ public sealed class DownloadEngine
     /// 解析目标路径。若既有 part 的元数据与本资源匹配，则复用它（续传），
     /// 否则另选一个不冲突的名字。
     /// </summary>
-    private (string Target, string Part, PartMetadata? Meta) ResolvePaths(
+    private (string Target, string Part, PartMetadata? Meta, string Name) ResolvePaths(
         string outDir, string fileName, RemoteInfo info, string url, DownloadOptions options)
     {
         // part 落在缓存目录（若配置了），最终文件仍在 outDir
@@ -285,7 +297,7 @@ public sealed class DownloadEngine
                 //   正确条件：长度 **不超过** 总长（超出说明是脏数据，不能信），
                 //   且元数据里记录的已完成区间与长度量级一致。
                 if (onDisk <= info.Total)
-                    return (basePath, basePart, existing);
+                    return (basePath, basePart, existing, fileName);
 
                 // 文件比总长还大：不可能来自这个资源，丢弃重下
                 try { File.Delete(basePart); } catch { /* ignore */ }
@@ -294,6 +306,57 @@ public sealed class DownloadEngine
         }
 
         // 不复用：选新名字，避免覆盖用户已有文件
+        //
+        // ★ 但如果目标目录已有同名文件，先问上层要不要覆盖。
+        //   默认（没人问 / 用户选自动改名）保持原来的行为：绝不覆盖，改成 name (1).ext。
+        if (File.Exists(basePath) && options.ResolveNameConflict != null)
+        {
+            long existingSize = 0;
+            try { existingSize = new FileInfo(basePath).Length; } catch { /* 读不到就当 0 */ }
+
+            var decision = options.ResolveNameConflict(
+                new NameConflict(fileName, outDir, existingSize));
+
+            if (decision.Choice == NameConflictChoice.Cancel)
+                throw new DownloadCancelledException();
+
+            if (decision.Choice == NameConflictChoice.AutoRename
+                && decision.NewName is { Length: > 0 } custom)
+            {
+                // 用户自定义了名字：用它重新找一个不冲突的落点。
+                // 仍然走 EnsureUnique —— 万一他输入的名字也被占用，自动加编号，不覆盖。
+                string renamed = FileNamePolicy.EnsureUnique(outDir,
+                    FileNamePolicy.SanitizeFileName(custom, fileName));
+                string renamedPart = Path.Combine(partDir, Path.GetFileName(renamed) + ".part");
+                try { if (File.Exists(renamedPart)) File.Delete(renamedPart); } catch { /* ignore */ }
+                PartMetadata.Delete(renamedPart);
+                return (renamed, renamedPart, null, Path.GetFileName(renamed));
+            }
+
+            if (decision.Choice == NameConflictChoice.Overwrite)
+            {
+                // 覆盖 = 删掉旧文件重下。
+                // 断点元数据也要清，否则会以为可以「续传」到一个已删除的文件上。
+                try
+                {
+                    File.Delete(basePath);
+                    PartMetadata.Delete(basePart);
+                    if (File.Exists(basePart)) File.Delete(basePart);
+                }
+                catch (Exception e)
+                {
+                    // 删不掉（被占用 / 只读）就退回自动改名，比直接失败对用户更友好
+                    throw new DownloadFailedException(
+                        $"无法覆盖已有文件（可能正被其它程序打开）：{e.Message}");
+                }
+
+                // 覆盖走的是原名，必须把预留表里可能残留的旧条目清掉，
+                // 否则并发的同名任务还会误以为这个名字已被别人占用。
+                FileNamePolicy.Release(basePath);
+                return (basePath, basePart, null, fileName);
+            }
+        }
+
         string target = FileNamePolicy.EnsureUnique(outDir, fileName);
         string part = Path.Combine(partDir, Path.GetFileName(target) + ".part");
 
@@ -301,7 +364,7 @@ public sealed class DownloadEngine
         try { if (File.Exists(part)) File.Delete(part); } catch { /* ignore */ }
         PartMetadata.Delete(part);
 
-        return (target, part, null);
+        return (target, part, null, Path.GetFileName(target));
     }
 
     // =====================================================================
@@ -328,7 +391,8 @@ public sealed class DownloadEngine
         long chunkSize = ChunkPlanner.ComputeChunkSize(total, workers);
         int chunkCount = ChunkPlanner.ComputeChunkCount(total, chunkSize);
         workers = Math.Min(workers, Math.Max(1, chunkCount));
-        log?.Invoke($"分片规划：{chunkCount} 块 × {Humanize.Size(chunkSize)}，{workers} 线程");
+        log?.Invoke($"分片规划：{chunkCount} 块 × {Humanize.Size(chunkSize)}，{workers} 线程" +
+                    $"（线路：{info.MirrorName}）");
 
         // ---- 准备 part 文件（预分配，便于 pwrite 定位）----
         //
@@ -376,6 +440,9 @@ public sealed class DownloadEngine
             }
 
             // 读缓冲来自设置（原项目「实验性功能 → 下载读缓冲」，默认 64KB，本版默认 96KB）
+            // 规划分片（大文件会有几万个块）也是可感知的一小段停顿，一并上报
+            progress?.Report(new DownloadProgress(0, 0, 0, DownloadPhase.Planning));
+
             int bufferSize = Math.Clamp(options.Tuning.ReadBufferBytes, 16 * 1024, 4096 * 1024);
 
             var pending = new ConcurrentQueue<(long Start, long End)>();
@@ -696,6 +763,29 @@ public sealed class DownloadEngine
                 continue;   // 这两个由引擎自己控制，防止被覆盖导致区间错乱
             req.Headers.TryAddWithoutValidation(k, v);
         }
+    }
+
+    /// <summary>
+    /// 为本次尝试挑一条线路：优先用没被拉黑的，按原顺序取。
+    ///
+    /// <para><b>为什么不能简单地 <c>urls[attempt % Count]</c></b>：
+    /// 慢连接被抢占后重新进来，attempt 从 0 开始，又会选中同一条慢线路 ——
+    /// 白付一次 TCP+TLS 握手，速度分毫不动。
+    /// 这里改成"在未被拉黑的线路里按 attempt 轮转"，既保证换线，
+    /// 又保证所有候选都会被试到。</para>
+    ///
+    /// <para>若全部被拉黑（线路太少、都慢过），退回按顺序轮转 ——
+    /// 否则这个分片会无处可去，直接卡死。</para>
+    /// </summary>
+    private static (string Name, string Url) PickLine(
+        List<(string Name, string Url)> urls, string[] avoid, int attempt)
+    {
+        if (urls.Count == 0) return ("直连", "");
+        if (avoid.Length == 0 || urls.Count == 1) return urls[attempt % urls.Count];
+
+        var usable = urls.Where(u => Array.IndexOf(avoid, u.Name) < 0).ToList();
+        if (usable.Count == 0) return urls[attempt % urls.Count];
+        return usable[attempt % usable.Count];
     }
 
     private async Task<FetchOutcome> FetchRangeAsync(

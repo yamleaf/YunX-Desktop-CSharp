@@ -1,4 +1,4 @@
-namespace YunX.Core.Download;
+﻿namespace YunX.Core.Download;
 
 /// <summary>
 /// 分片规划：决定切多少块、每块多大。
@@ -49,9 +49,24 @@ public static class ChunkPlanner
         // 关键：Math.Ceiling 而不是整除
         long chunk = (long)Math.Ceiling((double)total / targetChunks);
 
-        // 小于 MinChunk 的文件不做"分组"：直接一块装下。
-        // 否则 13 字节的文件也会被显示成"1 块 × 256KB"，看起来像 bug（实际无害）。
-        if (chunk < MinChunk) return total;
+        // ★ 块太小就**减小块数**，而不是放弃并行。
+        //
+        //   早期这里写的是 `if (chunk < MinChunk) return total;` ——
+        //   「整块装下」，也就是彻底退回单流。后果是**线程数越多越慢**：
+        //   2MB 文件按 8 线程算出 128KB < 256KB → 1 块 → 1 线程；
+        //   而 2 线程算 502KB → 4 块 → 真 2 线程。实测 8 线程 (28.8s)
+        //   比 1 线程 (24.0s) 还慢，用户设的线程数完全被反着用。
+        //
+        //   正确做法：文件不够大时，让块数降到「总大小 / MinChunk」这个上限，
+        //   而不是压成 1 块。2MB / 256KB = 8 块，仍然能并行。
+        if (chunk < MinChunk)
+        {
+            // 至少能切几块就切几块；切不出一块就整块装（极小文件）
+            int maxChunks = (int)(total / MinChunk);
+            if (maxChunks <= 1) return total;
+            chunk = (long)Math.Ceiling((double)total / maxChunks);
+        }
+
         return Math.Clamp(chunk, MinChunk, MaxChunk);
     }
 

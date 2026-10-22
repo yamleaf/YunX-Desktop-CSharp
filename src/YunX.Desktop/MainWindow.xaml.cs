@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -63,8 +63,24 @@ public partial class MainWindow : Window
         Vm.ClipboardHintShown += AnimateClipboardHint;
         Vm.TaskCompleted += OnTaskCompleted;
 
+        // 非阻断式告警：右下角浮层。
+        // 这些错误不值得打断用户（批量下载时可能连出好几条），但绝不能静默 ——
+        // 静默的错误等于没有错误处理，用户只会觉得"软件坏了"。
+        Vm.AlertRaised += (title, detail) =>
+        {
+            try { Toasts.Show(title, detail, isError: true); }
+            catch { /* 浮层失败不能影响业务 */ }
+        };
+
         // 「回到顶部」：VM 不碰 ScrollViewer，只发事件，由窗口执行滚动
         Vm.ScrollParseToTopRequested += ScrollParseToTop;
+
+        // 「清空输入框」后把焦点还给输入框：清完就能直接粘下一条，
+        // 不用再点一下（否则焦点还停在已经被禁用的按钮上，很别扭）。
+        Vm.ClearInputRequested += () =>
+        {
+            if (IsLoaded) InputBox.Focus();
+        };
 
         SetupWindowsIntegration();
 

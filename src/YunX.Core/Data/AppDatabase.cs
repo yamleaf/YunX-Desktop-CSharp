@@ -1,4 +1,5 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
+using System.IO;
 
 namespace YunX.Core.Data;
 
@@ -75,7 +76,32 @@ public sealed class AppDatabase : IDisposable
 
         if (version < 3) MigrateV3();
         if (version < 3) SetVersion(3);
+
+        if (version < 4) MigrateV4();
+        if (version < 4) SetVersion(4);
     }
+
+    /// <summary>
+    /// v4：下载任务增加三个时间字段 —— 开始传输时刻、完成时刻、累计传输耗时。
+    ///
+    /// <para><b>为什么不能直接用已有的 created_at / updated_at 相减</b>：
+    /// 那两列记的是「入队」和「最后一次写库」，中间的排队、暂停、甚至等待用户
+    /// 处理同名冲突的时间都会算进去，得出的「耗时」远大于实际下载时间。
+    /// 何况 updated_at 被进度节流写库不断刷新，完全不能代表完成时刻。</para>
+    /// </summary>
+    private void MigrateV4()
+    {
+        // SQLite 的 ALTER TABLE ADD COLUMN 不支持 IF NOT EXISTS，
+        // 用 PRAGMA 判断后再加，保证重复执行安全。
+        if (!ColumnExists("download_task", "transfer_start_at"))
+            Exec("ALTER TABLE download_task ADD COLUMN transfer_start_at INTEGER NOT NULL DEFAULT 0;");
+        if (!ColumnExists("download_task", "finished_at"))
+            Exec("ALTER TABLE download_task ADD COLUMN finished_at INTEGER NOT NULL DEFAULT 0;");
+        if (!ColumnExists("download_task", "elapsed_s"))
+            Exec("ALTER TABLE download_task ADD COLUMN elapsed_s INTEGER NOT NULL DEFAULT 0;");
+    }
+
+
 
     /// <summary>
     /// v3：清理解析历史里的重复记录。

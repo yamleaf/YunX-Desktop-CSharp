@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -80,10 +80,11 @@ public sealed class SplashWindow : Window
             FontFamily = new FontFamily("Microsoft YaHei UI"),
         });
 
-        string version = typeof(SplashWindow).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
+        // 同上：只从程序集取，不写死 fallback
+        string? version = typeof(SplashWindow).Assembly.GetName().Version?.ToString(3);
         stack.Children.Add(new TextBlock
         {
-            Text = $"v{version} · 高速下载器",
+            Text = string.IsNullOrEmpty(version) ? "高速下载器" : $"v{version} · 高速下载器",
             FontSize = 11.5,
             Foreground = muted,
             HorizontalAlignment = HorizontalAlignment.Center,

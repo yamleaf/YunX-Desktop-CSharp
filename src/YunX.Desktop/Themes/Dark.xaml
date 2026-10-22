@@ -1,4 +1,4 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
@@ -396,9 +396,22 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8">
+                        <!--
+                            ★ Padding 只能生效一次。
+
+                            实测（GetRectFromCharacterIndex(0)）：早期这句同时写了
+                            Margin="{TemplateBinding Padding}"，而 PART_ContentHost 是
+                            ScrollViewer，**它自己的 Padding 也继承了 TextBox 的 Padding**，
+                            于是 13 被加了两遍 —— 文本实际起点是 1(描边) + 13 + 13 = 27，
+                            而不是外观上的 14。占位提示无论怎么调都对不上光标。
+
+                            改法：Padding 交给 TextBox 的默认行为（ScrollViewer 的 Padding
+                            已继承），模板里不再加 Margin。
+                        -->
                         <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Hidden" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <!--
@@ -891,6 +904,41 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!--
+        环形转圈指示器。
+
+        用两个 Ellipse + StrokeDashArray 模拟「缺口圆环」，靠 RotateTransform 旋转。
+        不用 ProgressBar 的 IsIndeterminate：它的默认模板是高 4px 的横条，
+        在遮罩中央显得太弱，也不像「正在处理」。
+
+        ★ RenderTransformOrigin 必须 0.5,0.5 —— 否则旋转轴在左上角，圆环会甩出视野。
+    -->
+    <Style x:Key="BusyRing" TargetType="Grid">
+        <Setter Property="Width" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <RotateTransform Angle="0" />
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsVisible" Value="True">
+                <Trigger.EnterActions>
+                    <BeginStoryboard Name="SpinStory">
+                        <Storyboard RepeatBehavior="Forever">
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                             From="0" To="360" Duration="0:0:0.9" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="SpinStory" />
+                </Trigger.ExitActions>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
 </ResourceDictionary>

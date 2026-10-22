@@ -141,6 +141,53 @@ internal static class Program
 
         long tooSmall = ChunkPlanner.TailBlockSize(100_000, 8, baseBlock);
         Check("收缩不低于 64KB 下限", tooSmall >= ChunkPlanner.MinTailChunk, $"{tooSmall:N0} B");
+
+        // ★ 回归防护：线程数越多，块数不能反而变少。
+        //
+        //   曾经 `if (chunk < MinChunk) return total;` 会把 2MB 文件在 8 线程下
+        //   压成 1 块（1 线程），比 1 线程还慢 —— 用户设的线程数被反着用。
+        //   这里直接断言"并行度随线程数单调不减"。
+        long midTotal = 2 * 1024 * 1024;
+        int prevChunks = 0;
+        bool monotonic = true;
+        string trace = "";
+        foreach (int w in new[] { 1, 2, 4, 8, 16 })
+        {
+            long cs = ChunkPlanner.ComputeChunkSize(midTotal, w);
+            int cc = ChunkPlanner.ComputeChunkCount(midTotal, cs);
+            if (cc < prevChunks) monotonic = false;
+            prevChunks = cc;
+            trace += $"{w}线程→{cc}块  ";
+        }
+        Check("小块文件也不放弃并行（块数随线程数不减）", monotonic, trace.Trim());
+
+        int chunks8 = ChunkPlanner.ComputeChunkCount(midTotal,
+            ChunkPlanner.ComputeChunkSize(midTotal, 8));
+        Check("2MB / 8 线程仍能切出多块", chunks8 >= 4, $"{chunks8} 块");
+
+        // 极小文件不该被切成碎片
+        long tiny = ChunkPlanner.ComputeChunkSize(13, 8);
+        Check("极小文件整块装下", tiny == 13, $"{tiny} B");
+
+        // ★ 慢分片换线：抢占时必须记住"这条线不行"，重连才能换别的。
+        //
+        //   原来抢占只是断线重连，attempt 归零后又选回同一条慢线 ——
+        //   白付一次 TCP+TLS 握手，速度分毫不动。
+        //   实测背景：cdn.gh-proxy.org 的 8 条连接里 5 条只有 20~44 KB/s，
+        //   而 gh-proxy.com 同期 190~250 KB/s。
+        var swState = new YunX.Core.Download.ChunkState(0, 1024 * 1024, 0);
+        swState.CurrentLine = "慢线";
+        swState.RequestPreempt();
+        Check("抢占时记住来源线路",
+            swState.PreemptedFrom == "慢线" && swState.AvoidLines().Contains("慢线"),
+            $"avoid=[{string.Join(",", swState.AvoidLines())}]");
+
+        swState.RequestPreempt();
+        Check("重复拉黑不产生重复项", swState.AvoidLines().Length == 1,
+            $"{swState.AvoidLines().Length} 条");
+
+        swState.ClearAvoid();
+        Check("可清空避开列表", swState.AvoidLines().Length == 0, "已清空");
     }
 
     private static void TestIntervalSet()
@@ -1510,6 +1557,27 @@ internal static class Program
         }
         Check("至少一条线路可用", ranked.Any(r => r.Ok),
             $"{ranked.Count(r => r.Ok)}/{ranked.Count} 可用");
+
+        // ★ 回归防护：太慢的线路必须排在正常线路之后。
+        //
+        //   探测只发 Range: bytes=0-0（1 字节），拿到 206 就判"可用"。
+        //   实测存在这种线路：1 字节能秒回、下 512KB 要 32 秒 —— 它"可用"
+        //   却会把 8 个 worker 全拖死，用户看到的就是"几百 K 在爬"。
+        //   判据见 ProbeResult.UnusableBps。
+        var ordered = await pool.OrderedUrlsAsync(sampleUrl, force: false).ConfigureAwait(false);
+        int firstSlow = ordered.FindIndex(u =>
+            ranked.FirstOrDefault(r => r.MirrorName == u.Name) is { } rr
+            && rr.Ok && !rr.Tiny && rr.Speed < ProbeResult.UnusableBps);
+        int lastFast = -1;
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var rr = ranked.FirstOrDefault(r => r.MirrorName == ordered[i].Name);
+            if (rr is { Ok: true, Tiny: false } && rr.Speed >= ProbeResult.UnusableBps)
+                lastFast = i;
+        }
+        Check("太慢的线路排在正常线路之后",
+            firstSlow < 0 || lastFast < 0 || firstSlow > lastFast,
+            $"慢线首个位置={firstSlow}，快线最后位置={lastFast}");
 
         Section("链接解析（真实 API）");
         foreach (var input in new[]

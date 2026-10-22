@@ -140,11 +140,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _favoritesCollapsed = _settings.FavoritesCollapsed;
 
         // 命令
-        ParseCommand = new AsyncRelayCommand(ParseAsync, () => InputText.Trim().Length > 0)
+        ParseCommand = new AsyncRelayCommand(ParseAsync,
+            () => InputText.Trim().Length > 0 && !IsParsing)
         { OnError = e => _ = LogAsync("解析失败：" + e.Message, true) };
         DownloadCommand = new AsyncRelayCommand(DownloadAsync, CanDownload)
         { OnError = e => _ = LogAsync("下载失败：" + e.Message, true) };
-        PasteCommand = new RelayCommand(PasteFromClipboard);
+        ClearInputCommand = new RelayCommand(ClearInput, () => InputText.Length > 0);
         BrowseDirCommand = new RelayCommand(BrowseDirectory);
         OpenDirCommand = new RelayCommand(OpenDownloadDir);
         CancelAllCommand = new RelayCommand(CancelAll);
@@ -441,6 +442,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             ParseCommand.RaiseCanExecuteChanged();
             DownloadCommand.RaiseCanExecuteChanged();
+            // 清空按钮只在有内容时可用（空了再点没有意义）
+            ClearInputCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -771,8 +774,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get
         {
-            string ver = typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
-            return $"YunX Desktop v{ver}　·　Copyright (C) 2026 Lyaco";
+            // 版本号取自程序集（唯一来源是 csproj 的 <Version>），
+            // 不写死任何 fallback —— 否则升版本时漏改就会显示旧版本号。
+            string? ver = typeof(MainViewModel).Assembly.GetName().Version?.ToString(3);
+            return string.IsNullOrEmpty(ver)
+                ? "YunX Desktop　·　Copyright (C) 2026 Lyaco"
+                : $"YunX Desktop v{ver}　·　Copyright (C) 2026 Lyaco";
         }
     }
 
@@ -895,6 +902,59 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// 窗口活跃时不打扰，只有切到后台才提示。</para>
     /// </summary>
     public event Action<string, string>? TaskCompleted;
+
+    /// <summary>
+    /// 非阻断式告警（右下角浮层）。参数：(标题, 细节)。
+    ///
+    /// <para><b>为什么需要它</b>：解析失败可以用模态弹窗拦住用户，
+    /// 但下载失败不行 —— 批量下载时可能同时失败好几个，
+    /// 连续弹模态框会把用户逼疯。这类"告知但不阻断"的错误走浮层。</para>
+    /// </summary>
+    public event Action<string, string>? AlertRaised;
+
+    /// <summary>
+    /// 弹一条浮层告警。切回 UI 线程安全，可在任意线程调用。
+    /// </summary>
+    /// <param name="title">标题：一行说清是什么失败了</param>
+    /// <param name="detail">细节：为什么、怎么处理（可为空）</param>
+    public void RaiseAlert(string title, string detail = "")
+    {
+        if (_disposed) return;
+        _ui.Post(_ =>
+        {
+            try { AlertRaised?.Invoke(title, detail); }
+            catch { /* 通知失败不该影响任何业务逻辑 */ }
+        }, null);
+    }
+
+    /// <summary>
+    /// 解析类失败的统一出口：弹模态框 + 写日志。
+    ///
+    /// <para><b>为什么解析要用模态而不是浮层</b>：解析是用户的主动操作，
+    /// 失败了就什么也没有 —— 不让用户明确知道"失败了、为什么"，
+    /// 他会以为是软件卡住，反复点解析。模态框强制确认，才能形成闭环。</para>
+    /// </summary>
+    private void ReportParseFailure(string stage, string reason)
+    {
+        ParsedKind = "解析失败";
+        ParsedTitle = "";
+        ParsedNote = reason;
+        HasParsed = false;
+
+        // 日志留全量细节（含阶段），弹窗只给用户能看懂的部分
+        _ = LogAsync($"解析失败（{stage}）：{reason}", true);
+
+        string advice = reason.Contains("超时", StringComparison.Ordinal)
+            ? "\n\n可能是网络不通或线路拥塞。可以稍后重试，或在设置里换个线路 / 开启「绕过 hosts 劫持」。"
+            : reason.Contains("404", StringComparison.Ordinal)
+                ? "\n\n请检查仓库名、分支、文件名是否正确。私有仓库需要在设置里填 Token。"
+                : reason.Contains("Token", StringComparison.Ordinal)
+                    ? "\n\n请在「设置 → GitHub 访问」里填入 Personal Access Token。"
+                    : "";
+
+        Views.PromptDialog.Alert("解析失败",
+            $"{reason}\n\n阶段：{stage}{advice}");
+    }
 
     /// <summary>下载完成通知开关。</summary>
     public bool NotifyOnComplete
@@ -1163,6 +1223,46 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string? _tokenError;
     public string? TokenError { get => _tokenError; set => SetProperty(ref _tokenError, value); }
 
+    private string _apiQuotaText = "尚未查询";
+
+    /// <summary>
+    /// API 配额状态文案（设置页显示）。
+    ///
+    /// <para><b>为什么值得占一行 UI</b>：GitHub 匿名 API 只有 60 次/小时，
+    /// 用完就 403，而用户从「解析失败」的报错里根本看不出是这个原因。
+    /// 提前把剩多少摆出来，用户就知道该配 Token 了。</para>
+    /// </summary>
+    public string ApiQuotaText
+    {
+        get => _apiQuotaText;
+        private set => SetProperty(ref _apiQuotaText, value);
+    }
+
+    /// <summary>配额偏低时的提示色标记（剩余 < 10 次）。</summary>
+    public bool ApiQuotaLow => _apiQuotaLow;
+    private bool _apiQuotaLow;
+
+    /// <summary>从 API 客户端刷新配额显示。没有 Token 且没调过 API 时会显示「未使用」。*</summary>
+    private void RefreshApiQuota()
+    {
+        var rl = _api?.RateLimit;
+        if (rl is not { } r)
+        {
+            // 一次都没调过 API（新版解析根本不碰 API）—— 这是好事，说清楚
+            ApiQuotaText = _api?.HasToken == true
+                ? "尚未使用（每次解析会消耗 1 次）"
+                : "未使用（解析不消耗配额，下载也不消耗）";
+            _apiQuotaLow = false;
+            OnPropertyChanged(nameof(ApiQuotaLow));
+            return;
+        }
+
+        string reset = r.ResetAt is { } t ? $"，{t:HH:mm} 重置" : "";
+        ApiQuotaText = $"剩余 {r.Remaining} / {r.Limit} 次{reset}";
+        _apiQuotaLow = r.Remaining <= 10;
+        OnPropertyChanged(nameof(ApiQuotaLow));
+    }
+
     // ---- 设置面板绑定 ----
     public int Threads
     {
@@ -1234,11 +1334,51 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set { _settings.MirrorId = value; OnPropertyChanged(); }
     }
 
+    // ===================== 解析进度 =====================
+
+    private bool _isParsing;
+    private string _parseStage = "";
+
+    /// <summary>是否正在解析。为 true 时界面覆盖一层遮罩，挡住重复点击。</summary>
+    public bool IsParsing
+    {
+        get => _isParsing;
+        private set
+        {
+            if (!SetProperty(ref _isParsing, value)) return;
+            OnPropertyChanged(nameof(ShowParseOverlay));
+            ParseCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>
+    /// 解析阶段文案（「正在探测线路…」这类）。
+    ///
+    /// <para><b>为什么必须有</b>：一次解析要经过仓库探测、API 抓资产、线路测速
+    /// 几个阶段，合计 1~3 秒。期间界面完全不动，用户无法区分「在干活」和「卡死」。
+    /// 只有转圈还不够 —— 圈子转三秒也会让人怀疑，配上具体阶段才安心。</para>
+    /// </summary>
+    public string ParseStage
+    {
+        get => _parseStage;
+        private set => SetProperty(ref _parseStage, value);
+    }
+
+    /// <summary>遮罩是否可见（保留给 XAML 绑定，语义比直接绑 IsParsing 清楚）。</summary>
+    public bool ShowParseOverlay => IsParsing;
+
+    /// <summary>设置阶段文案。切回 UI 线程安全，可在后台回调里调用。</summary>
+    private void SetStage(string stage)
+    {
+        if (_disposed) return;
+        _ui.Post(_ => ParseStage = stage, null);
+    }
+
     // ===================== 命令 =====================
 
     public AsyncRelayCommand ParseCommand { get; }
     public AsyncRelayCommand DownloadCommand { get; }
-    public RelayCommand PasteCommand { get; }
+    public RelayCommand ClearInputCommand { get; }
     public RelayCommand BrowseDirCommand { get; }
     public RelayCommand OpenDirCommand { get; }
     public RelayCommand CancelAllCommand { get; }
@@ -1412,7 +1552,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             () => string.IsNullOrWhiteSpace(_settings.GitHubToken) ? null : _settings.GitHubToken)
         {
             Log = m => LogAsync("[API] " + m),
+            // 每次拿到响应头就刷新配额显示（不需要额外请求）
+            RateLimitChanged = () => _ui.Post(_ => RefreshApiQuota(), null),
         };
+        RefreshApiQuota();
         _api.OnUnauthorized = () =>
         {
             _settings.GitHubToken = "";
@@ -1427,6 +1570,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _resolver = new ContentResolver(_api, _provider)
         {
             Log = m => LogAsync("[解析] " + m),
+            // 内部阶段（探测仓库 / 抓资产 / 测线路）实时反映到遮罩上，
+            // 否则用户只能看着一个不动的「正在连接 GitHub…」等好几秒。
+            Progress = SetStage,
         };
     }
 
@@ -1455,6 +1601,69 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         string input = InputText.Trim();
         if (input.Length == 0) return;
 
+        // ★ 整个解析过程套一层遮罩 + 阶段文案。
+        //   解析要经过仓库探测 / API 抓资产 / 线路测速，合计 1~3 秒；
+        //   这段时间界面完全不动，用户无法区分「在干活」和「卡死」。
+        //   finally 里一定会收掉遮罩 —— 包括异常和取消路径，否则界面会永久被挡住。
+        IsParsing = true;
+        SetStage("正在识别链接…");
+
+        // ★ 整体超时预算。
+        //
+        //   单看每一步都有超时（每个 HTTP 请求 8~100 秒），但组合起来可能非常久：
+        //   探测 + 抓页面 + 测 4~8 条线路，任一环节卡住，遮罩就会一直挂着。
+        //   用户看到的是"永远在转圈"，比明确报错糟糕得多。
+        //   这里给整个流程一个硬上限，到点就抛 ParseTimeoutException，
+        //   由下面的 catch 弹窗告知 —— 宁可报"超时"，也不让界面无限等待。
+        using var budget = new CancellationTokenSource(ParseBudget);
+
+        try
+        {
+            await ParseCoreAsync(input, budget.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested)
+        {
+            // 预算耗尽 = 超时（区别于用户主动取消：那个会被 OperationCanceledException
+            // 的另一个分支接住，且 budget.IsCancellationRequested 为 false）
+            ReportParseFailure("整体耗时",
+                $"解析超过 {ParseBudget.TotalSeconds:0} 秒仍未完成。");
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户自己取消的，不需要告警（他刚点的取消，再弹一个框很蠢）
+            ParsedKind = "已取消";
+            ParsedNote = "解析已取消";
+        }
+        catch (ParseTimeoutException ex)
+        {
+            // 超时单独一类：文案要告诉用户"可以重试"，否则他会以为链接坏了
+            ReportParseFailure("网络请求", "请求超时：" + ex.Message);
+        }
+        catch (ParseException ex)
+        {
+            // 解析类错误（链接不支持、资产取不到）是用户可理解的，不该弹成"崩溃"
+            ReportParseFailure("识别内容", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            // 兜底：未预期的异常也必须让用户知道，同时把完整堆栈写进日志
+            ReportParseFailure("未知错误",
+                $"解析时发生未预期的错误：{ex.Message}");
+        }
+        finally
+        {
+            IsParsing = false;
+            ParseStage = "";
+            ParseCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>解析主体。遮罩与异常收口在 <see cref="ParseAsync"/> 里统一处理。</summary>
+    /// <summary>整个解析流程的时间预算（秒）。超过就判超时并告警。</summary>
+    private static readonly TimeSpan ParseBudget = TimeSpan.FromSeconds(45);
+
+    private async Task ParseCoreAsync(string input, CancellationToken budgetCt = default)
+    {
         ParsedKind = "解析中…";
         ParsedTitle = "";
         ParsedNote = "";
@@ -1472,6 +1681,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // 单独走一条识别路径，因为它不是 HTTP 下载 —— 由 Gopeed 引擎负责。
         if (MagnetLink.IsMagnet(input))
         {
+            SetStage("正在读取磁力元数据…");
             ApplyMagnet(input);
             DownloadCommand.RaiseCanExecuteChanged();
             return;
@@ -1491,13 +1701,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         // 网盘优先：网盘链接的域名特征比 GitHub 更明确，
         // 而且粘一个夸克链接却报「仓库不存在（404）」是很容易让人放弃的体验。
+        SetStage("正在识别来源…");
         if (await TryCloudAsync(input).ConfigureAwait(true))
         {
             DownloadCommand.RaiseCanExecuteChanged();
             return;
         }
 
-        var content = await _resolver.ResolveAsync(input, _pool).ConfigureAwait(true);
+        // 解析器内部还会依次经历「仓库探测 → 抓资产列表 → 线路测速」，
+        // 它通过 Log 回调把细节报上来；这里先把粗粒度阶段换成「连接中」。
+        SetStage("正在连接 GitHub…");
+        // 预算 token 必须传进去：否则外壳超时了，内部的 HTTP 请求还在跑，
+        // 遮罩虽然收了，后台仍在耗资源、还可能把结果写回已失效的状态
+        var content = await _resolver.ResolveAsync(input, _pool, budgetCt).ConfigureAwait(true);
+        SetStage("正在整理结果…");
         _lastResolved = content;
 
         // ★ 记一条解析历史。
@@ -1575,13 +1792,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
             if (res == null || res.CloudContext == null)
             {
-                // 口令没解析出分享：这确实不像网盘，交回 GitHub 也无意义，直接提示
-                await LogAsync("口令未匹配到任何分享（该资源可能已失效）", true);
-                ParsedKind = "无法识别";
-                ParsedTitle = "口令未匹配到分享";
-                ParsedNote = "可以试试直接粘贴分享链接，或确认口令是否完整";
-                HasParsed = false;
-                return true;
+                // 口令没解析出分享：这确实不像网盘，交回 GitHub 也无意义，直接提示。
+                // 这是用户主动操作的结果，用弹窗 —— 只写日志等于让他对着空界面发呆。
+                ReportParseFailure("识别网盘口令",
+                    "口令未匹配到任何分享，该资源可能已失效。");
+                return true;   // 已处理（弹窗告知），不再交给 GitHub 分支
             }
 
             _cloudDirStack.Clear();
@@ -1988,6 +2203,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             vm.Error = e.Message;
             vm.Speed = 0;
             await LogAsync($"磁力任务失败：{vm.FileName} — {e.Message}", true).ConfigureAwait(true);
+            RaiseAlert($"磁力任务失败：{vm.FileName}",
+                "可能是没有可用的 peer，或网络限制了 BT 流量。");
             PersistTask(vm);
         }
         finally
@@ -2041,8 +2258,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // 非法 info hash 绝不能提交给引擎：会让整个 Gopeed 进程 panic 退出
         if (!MagnetLink.IsStructurallyValid(_magnetUrl))
         {
-            await LogAsync("磁力链接的 info hash 无效，无法下载。请确认链接完整（通常 40 位十六进制）。", true)
-                .ConfigureAwait(true);
+            string why = "磁力链接的 info hash 无效，无法下载。请确认链接完整（通常 40 位十六进制）。";
+            await LogAsync(why, true).ConfigureAwait(true);
+            // 直接弹窗：用户点了下载却什么都没发生，不给原因就是"软件无响应"
+            Views.PromptDialog.Alert("磁力链接无效", why +
+                "\n\n可以从发布页重新复制完整链接，或改用普通下载链接。");
             return;
         }
 
@@ -2467,20 +2687,36 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             vm.State = TaskState.Running;
             vm.Phase = DownloadPhase.Probing;
 
+            // ★ 时间统计的三个锚点。
+            //
+            //   TransferStartedAt 只在**第一次**开始时记（续传不改），
+            //   这样「开始时间」始终是首次真正下载的那一刻，语义稳定。
+            //   RunStartedAt 每轮都刷新，用来算本轮耗时累加到 Elapsed。
+            vm.TransferStartedAt ??= DateTime.Now;
+            vm.RunStartedAt = DateTime.Now;
+            // 重新开始跑 = 还没结束，清掉上一次的完成时刻
+            vm.FinishedAt = null;
+
             // Progress 必须在**任何 await 之前**创建：
             // 它靠捕获构造时的 SynchronizationContext 来决定回调投递到哪个线程。
             // 晚于 await 创建时 Current 可能已是 null，回调就落到线程池了。
             var progress = new Progress<DownloadProgress>(p =>
             {
-                vm.Done = p.BytesDone;
-                if (p.TotalBytes > 0) vm.Size = p.TotalBytes;
+                // ★ TotalBytes == 0 是「纯阶段通知」（探测阶段还没拿到文件大小）。
+                //   这类回调只更新文案，绝不能碰 Done/Size —— 否则会把续传的既有进度
+                //   清成 0，用户看到进度条忽然归零。
+                if (p.TotalBytes > 0)
+                {
+                    vm.Done = p.BytesDone;
+                    vm.Size = p.TotalBytes;
+                }
                 vm.Speed = p.SpeedBytesPerSec;
                 vm.Phase = p.Phase;
 
                 // 进度落盘（节流：force=false 时按 3 秒一次）。
                 // 目的是"强杀/断电后重启能知道下到哪了"；断点的真实位置存在
                 // PartMetadata 里，这里记的是给用户看的进度。
-                PersistTask(vm, force: false);
+                if (p.TotalBytes > 0) PersistTask(vm, force: false);
             });
 
             var engine = new DownloadEngine(_provider, _pool);
@@ -2511,6 +2747,80 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 },
                 // 记下断点落点（可能在缓存目录）：删除任务时要靠它回收孤儿 part
                 OnPartPathResolved = p => vm.PartPath = p,
+                // 同名文件已存在时引擎会改名（name (1).ext），界面必须跟着改，
+                // 否则两个任务显示同一个名字，用户分不清哪个是这次下的。
+                OnFileNameResolved = name =>
+                {
+                    // ★ 必须同步落盘，不能只 Post 一下就返回。
+                    //
+                    //   改名发生在下载「探测完、开始写数据之前」。用 Post 时这行只是
+                    //   排进消息队列就返回了，而下载可能很快就跑完并执行
+                    //   PersistTask(Done) —— 两个写库操作谁先谁后不确定。
+                    //   Send 会等 UI 线程执行完再返回，顺序才有保证。
+                    //
+                    //   ★ 但要防死锁：Send 在 UI 线程自身调用会永久阻塞。
+                    //   引擎在 Task.Run 里跑，正常不会是 UI 线程；仍然判一次更安全。
+                    void Apply()
+                    {
+                        vm.FileName = name;
+                        // 改名必须立刻落盘：否则界面是新名字、库里是旧名字，
+                        // 重启后又变回去，而磁盘上的文件是按新名字存的，两边对不上。
+                        PersistTask(vm, force: true);
+                    }
+
+                    if (SynchronizationContext.Current == _ui) Apply();
+                    else _ui.Send(_ => Apply(), null);
+                },
+                // 目标目录已有同名文件：问用户要自定义名称还是覆盖。
+                //
+                // 引擎在后台线程调用它，而 Choose/Ask 是模态窗口，必须回到 UI 线程。
+                // 用 Send（同步等待）而不是 Post：这里需要拿到用户的选择才能继续。
+                ResolveNameConflict = conflict =>
+                {
+                    // 默认自动改名：万一调度失败，也绝不动用户已有文件
+                    var decision = NameConflictDecision.AutoRename;
+
+                    _ui.Send(_ =>
+                    {
+                        int pick = Views.PromptDialog.ChooseWithPrimary(
+                            "同名文件已存在",
+                            $"下载目录里已经有「{conflict.FileName}」" +
+                            $"（{YunX.Core.Util.Humanize.Size(conflict.ExistingSize)}）。\n\n" +
+                            "要怎么做？", 1,
+                            "覆盖原文件", "重命名文件");
+
+                        if (pick < 0) { decision = NameConflictDecision.Cancel; return; }
+
+                        if (pick == 0)
+                        {
+                            // 覆盖是破坏性操作：删的是用户已有文件，必须二次确认
+                            int sure = Views.PromptDialog.Choose(
+                                "确认覆盖",
+                                $"即将删除已有文件并重新下载：\n{conflict.FileName}\n\n" +
+                                "原文件内容将丢失，且无法恢复。确定继续吗？",
+                                "覆盖");
+                            decision = sure == 0
+                                ? NameConflictDecision.Overwrite
+                                : NameConflictDecision.Cancel;
+                            return;
+                        }
+
+                        // 重命名：预填当前名字，用户直接改成想要的名字
+                        string? name = Views.PromptDialog.Ask(
+                            "重命名文件",
+                            "输入新的文件名（留空则用系统自动生成的名字）：",
+                            initial: conflict.FileName);
+
+                        if (name == null) { decision = NameConflictDecision.Cancel; return; }
+
+                        name = name.Trim();
+                        decision = name.Length > 0
+                            ? NameConflictDecision.Rename(name)
+                            : NameConflictDecision.AutoRename;
+                    }, null);
+
+                    return decision;
+                },
             };
 
             try
@@ -2557,6 +2867,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 //
                 //   现在：落盘为 Done，重启时由 LoadCompleted 读回来显示，但不参与恢复。
                 //   条数由 PruneCompleted 收敛到「最近 N 条」。
+                // 耗时优先用引擎的统计：它只累计真正在传数据的时间，
+                // 比「墙钟相减」准确（墙钟会把等待、重连都算进去）。
+                vm.Elapsed += result.ElapsedSeconds > 0
+                    ? TimeSpan.FromSeconds(result.ElapsedSeconds)
+                    : WallSinceRunStart(vm);
+                vm.FinishedAt = DateTime.Now;
+
                 PersistTask(vm, force: true);
                 PruneCompletedHistory();
             }
@@ -2574,6 +2891,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     vm.PauseRequested = false;
                     vm.State = TaskState.Paused;
                     vm.Speed = 0;
+                    // 暂停：把本轮已跑的时间记进累计，不清空（之后继续还会往上加）
+                    vm.Elapsed += WallSinceRunStart(vm);
                     await LogAsync($"已暂停：{vm.FileName}（断点已保留）");
                     PersistTask(vm);
                 }
@@ -2581,6 +2900,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 {
                     vm.State = TaskState.Cancelled;
                     vm.Speed = 0;
+                    vm.Elapsed += WallSinceRunStart(vm);
+                    // 取消是「这一次」的终点 —— 记下时刻，但断点仍在，之后继续会清掉它
+                    vm.FinishedAt = DateTime.Now;
                     await LogAsync($"已取消：{vm.FileName}（断点已保留）", true);
                     // 取消也要落盘：否则重启后这个任务的断点无人知晓，
                     // 用户以为"取消可续传"却发现列表里没了。
@@ -2592,7 +2914,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 vm.State = TaskState.Failed;
                 vm.Error = e.Message;
                 vm.Speed = 0;
+                vm.Elapsed += WallSinceRunStart(vm);
+                vm.FinishedAt = DateTime.Now;
                 await LogAsync($"失败：{vm.FileName} — {e.Message}", true);
+                // ★ 不能只写日志。用户在别的页面、或者没看日志面板时，
+                //   任务悄悄变成"失败"他完全不知道，只会觉得"下着下着不见了"。
+                //   浮层不打断操作，批量失败也不会连弹模态框。
+                RaiseAlert($"下载失败：{vm.FileName}", DescribeDownloadError(e.Message));
                 // 失败最需要落盘：它保留了可续传的断点，重启后应能重试
                 PersistTask(vm);
             }
@@ -2663,18 +2991,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     // ===================== 交互 =====================
 
-    private void PasteFromClipboard()
+    /// <summary>
+    /// 一键清空输入框。
+    ///
+    /// <para><b>为什么替换掉了「粘贴」</b>：输入框本身就能 <c>Ctrl+V</c>，
+    /// 粘贴按钮只在「鼠标操作」时省一次右键，收益很小；而清空是刚需 ——
+    /// 粘错链接、或者在同一个窗口反复解析不同链接时，都要先全选删除。
+    /// 清空后顺手聚焦回输入框，可以直接粘下一条。</para>
+    /// </summary>
+    private void ClearInput()
     {
-        try
-        {
-            if (Clipboard.ContainsText())
-                InputText = Clipboard.GetText().Trim();
-        }
-        catch (Exception e)
-        {
-            _ = LogAsync("读取剪贴板失败：" + e.Message, true);
-        }
+        InputText = "";
+        ClearInputRequested?.Invoke();
     }
+
+    /// <summary>UI 层订阅：把输入框重新聚焦（ViewModel 不直接持有控件）。</summary>
+    public event Action? ClearInputRequested;
 
     private void BrowseCacheDirectory()
     {
@@ -2960,6 +3292,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 },
                 Error = vm.Error,
                 PayloadJson = BuildTaskPayload(vm),
+                // 时间三件套：开始 / 完成 / 累计耗时。
+                // 0 表示「还没有」，读取侧据此决定显示什么。
+                TransferStartAt = ToUnix0(vm.TransferStartedAt),
+                FinishedAt = ToUnix0(vm.FinishedAt),
+                ElapsedSeconds = (long)Math.Round(vm.Elapsed.TotalSeconds),
             };
 
             _services.Tasks.Upsert(row);
@@ -3081,6 +3418,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     PartPath = payload?.PartPath,
                     SaveDir = payload?.SaveDir ?? t.SaveDir,
                     Platform = payload?.Platform,
+                    // 时间信息一并还原，否则重启后「用时」全变成 0
+                    TransferStartedAt = FromUnixOrNull(t.TransferStartAt),
+                    FinishedAt = FromUnixOrNull(t.FinishedAt),
+                    Elapsed = TimeSpan.FromSeconds(t.ElapsedSeconds),
                 };
 
                 vm.State = t.State switch
@@ -3146,6 +3487,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     Platform = payload?.Platform,
                     State = TaskState.Done,
                     Phase = DownloadPhase.Completed,
+                    TransferStartedAt = FromUnixOrNull(t.TransferStartAt),
+                    FinishedAt = FromUnixOrNull(t.FinishedAt),
+                    Elapsed = TimeSpan.FromSeconds(t.ElapsedSeconds),
                 };
 
                 // 文件被用户删掉/移走后，历史仍然保留（那是"下过"的记录），
@@ -3169,6 +3513,53 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             // 历史加载失败不该拖累主流程（未完成任务已经恢复了）
             _ = LogAsync($"载入下载历史失败：{e.Message}", true);
         }
+    }
+
+    /// <summary>
+    /// 本轮已运行的墙钟时长。用于引擎没给耗时（失败/取消）的分支。
+    ///
+    /// <para>用完把 <see cref="DownloadTaskViewModel.RunStartedAt"/> 置空，
+    /// 避免同一轮被重复累计（例如暂停后又失败）。</para>
+    /// </summary>
+    /// <summary>
+    /// 把下载失败的技术错误翻译成用户能行动的建议。
+    ///
+    /// <para>直接抛 `HttpRequestException` / `IOException` 给用户等于没说 ——
+    /// 他既不知道发生了什么，也不知道该做什么。</para>
+    /// </summary>
+    private static string DescribeDownloadError(string raw)
+    {
+        if (raw.Contains("403", StringComparison.Ordinal))
+            return "服务器拒绝了访问（403）。网盘直链可能已过期，请重新解析。";
+        if (raw.Contains("404", StringComparison.Ordinal))
+            return "文件不存在（404）。可能已被删除或改名，请重新解析。";
+        if (raw.Contains("所有线路均不可用", StringComparison.Ordinal))
+            return "所有线路都连不上。检查网络，或在设置里换一个下载线路。";
+        if (raw.Contains("超时", StringComparison.Ordinal) ||
+            raw.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            return "连接超时。网络不稳或线路拥塞，可以稍后点「继续」从断点续传。";
+        if (raw.Contains("磁盘", StringComparison.Ordinal) ||
+            raw.Contains("space", StringComparison.OrdinalIgnoreCase))
+            return "磁盘写入失败。检查目标磁盘剩余空间和写权限。";
+        if (raw.Contains("无法覆盖", StringComparison.Ordinal))
+            return raw;   // 已经是人话，原样给
+        return raw + "\n\n可点「继续」从断点重试；仍失败请换线路。";
+    }
+
+    /// <summary>本地时间 → Unix 秒；null 记 0，表示「没有这个时刻」。</summary>
+    private static long ToUnix0(DateTime? t)
+        => t is { } v ? new DateTimeOffset(v).ToUnixTimeSeconds() : 0;
+
+    /// <summary>Unix 秒 → 本地时间；0 表示「没有这个时刻」。</summary>
+    private static DateTime? FromUnixOrNull(long seconds)
+        => seconds <= 0 ? null : DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime;
+
+    private static TimeSpan WallSinceRunStart(DownloadTaskViewModel vm)
+    {
+        if (vm.RunStartedAt is not { } started) return TimeSpan.Zero;
+        vm.RunStartedAt = null;
+        var d = DateTime.Now - started;
+        return d > TimeSpan.Zero ? d : TimeSpan.Zero;
     }
 
     /// <summary>解析 <c>payload_json</c>；损坏或为空时返回 null（退化为只有基本信息）。</summary>
@@ -3301,6 +3692,47 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void DeleteTask(object? param)
     {
         if (param is not DownloadTaskViewModel vm) return;
+
+        // ★ 先确认，再动手。
+        //
+        //   删除任务是不可逆操作（成功完成的任务连文件都可能一起删），
+        //   而「删除」按钮就在列表右侧，误点代价很高。
+        //   完成的任务额外提供「连文件一起删」，因为那是用户最常想做的清理动作 ——
+        //   但绝不能不问就删：文件可能已经被移到别处、或用户只想清列表。
+        string? filePath = vm.ResultPath;
+        bool fileExists = !string.IsNullOrEmpty(filePath) && File.Exists(filePath);
+
+        if (fileExists)
+        {
+            int pick = Views.PromptDialog.ChooseWithPrimary(
+                "删除下载记录",
+                $"「{vm.FileName}」已下载完成，文件仍在：\n{filePath}\n\n要连文件一起删除吗？",
+                1,   // 「记录和文件一起删除」是主操作（也最危险），用强调色让它显眼
+                "仅删除记录", "记录和文件一起删除");
+
+            if (pick < 0) return;                  // 取消
+            if (pick == 1)
+            {
+                try
+                {
+                    File.Delete(filePath!);
+                    _ = LogAsync($"已删除文件：{Path.GetFileName(filePath)}");
+                }
+                catch (Exception ex)
+                {
+                    // 删不掉（占用/权限）不该阻断删记录，但要明确告诉用户
+                    _ = LogAsync($"无法删除文件：{ex.Message}", true);
+                }
+            }
+        }
+        else
+        {
+            int pick = Views.PromptDialog.Choose(
+                "删除下载记录",
+                $"确定要删除「{vm.FileName}」这条记录吗？",
+                "删除");
+            if (pick < 0) return;
+        }
 
         // ★ 立「已移除」标志。
         //
@@ -3526,6 +3958,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (param is not FavoriteEntry f) return;
         if (_services == null) return;
 
+        // 删除类操作统一走确认，防止误点（收藏一旦删掉要重新粘链接才能恢复）
+        if (Views.PromptDialog.Choose("取消收藏",
+                $"确定要删除收藏「{f.DisplayLabel}」吗？", "删除") < 0)
+            return;
+
         if (_services.Favorites.Remove(f.RawInput))
         {
             RefreshFavorites();
@@ -3603,12 +4040,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void DeleteHistory(object? param)
     {
         if (param is not HistoryEntry h) return;
+
+        if (Views.PromptDialog.Choose("删除解析历史",
+                $"确定要删除「{h.Title}」这条历史吗？", "删除") < 0)
+            return;
+
         _services?.History.Delete(h.Id);
         RefreshHistory();
     }
 
     private void ClearHistory()
     {
+        int count = History.Count;
+        if (count == 0) return;
+
+        // 批量删除风险更高：把条数写进文案里，让用户看清代价
+        if (Views.PromptDialog.Choose("清空解析历史",
+                $"确定要删除全部 {count} 条解析历史吗？此操作不可撤销。", "清空") < 0)
+            return;
+
         _services?.History.Clear();
         RefreshHistory();
         _ = LogAsync("已清空解析历史");
@@ -3972,6 +4422,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RefreshDuplicateNames();
+
         var active = Tasks.Where(t => t.IsRunning).ToList();
         RunningCount = active.Count(t => t.State == TaskState.Running);
         long totalSize = Tasks.Where(t => t.Size > 0).Sum(t => t.Size);
@@ -3993,6 +4445,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             StatusText = Tasks.Count == 0 ? "就绪" : $"已完成 {done} / {Tasks.Count} 个";
             TotalSpeedText = "";
         }
+    }
+
+    /// <summary>
+    /// 标记"名字有重复"的任务，让它们显示保存目录。
+    ///
+    /// <para><b>为什么需要</b>：文件名相同不代表同一个文件。下到不同目录的两个
+    /// <c>rg.zip</c> 在列表里完全一样 —— 除非点「定位」跳到别处，用户根本发现不了。
+    /// 只在真有重名时才附带目录，否则每条都挂一长串路径，界面会很吵。</para>
+    /// </summary>
+    private void RefreshDuplicateNames()
+    {
+        // 统计每个名字出现几次；只有 >1 的才需要额外信息区分
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in Tasks)
+        {
+            if (counts.TryGetValue(t.FileName, out int n)) counts[t.FileName] = n + 1;
+            else counts[t.FileName] = 1;
+        }
+
+        foreach (var t in Tasks)
+            t.ShowDir = counts.TryGetValue(t.FileName, out int c) && c > 1;
     }
 
     private Task LogAsync(string message, bool isError = false)
