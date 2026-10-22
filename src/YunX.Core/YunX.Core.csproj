@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      net8.0-windows 而非 net8.0：DPAPI（ProtectedData）与 SetThreadExecutionState 等
+      Windows 专有能力需要 Windows 目标框架。本项目定位就是 Windows 桌面工具，
+      不做跨平台承诺，直接用 windows TFM 可以省掉大量条件编译。
+    -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>YunX.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DPAPI：凭证主密钥的「绑定当前 Windows 用户」档 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- SQLite：任务持久化、解析历史、收藏、凭证表 -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
+
+</Project>

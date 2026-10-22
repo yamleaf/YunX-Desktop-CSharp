@@ -1,0 +1,60 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YunX.Desktop</RootNamespace>
+    <AssemblyName>YunX-Desktop</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 应用图标：既作为 exe 图标，也是托盘图标的来源（TrayIcon.LoadAppIcon 从这里提取）。
+         没有它时 exe 用 .NET 默认图标，托盘也会显示成一个没有辨识度的通用方块。 -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <!-- 自包含发布：目标机器无需安装 .NET 运行时，双击即用 -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <Product>YunX Desktop (C#)</Product>
+    <Description>高速下载器：多镜像择优 + 分块多线程 + 慢连接抢占 + 断点续传</Description>
+
+    <!-- 许可与版权：会写进 exe 的文件属性（右键 → 详细信息）。
+         AGPL-3.0-or-later 与仓库根目录 LICENSE 一致。 -->
+    <Copyright>Copyright (C) 2026 yamleaf</Copyright>
+    <Company>yamleaf</Company>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/tidain/YunX-Desktop</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/tidain/YunX-Desktop</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 窗口图标（任务栏/Alt-Tab 用 WPF 资源，与 exe 图标同源） -->
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YunX.Core\YunX.Core.csproj" />
+    <ProjectReference Include="..\YunX.GitHub\YunX.GitHub.csproj" />
+  </ItemGroup>
+
+  <!--
+    发布时把 LICENSE 与第三方声明一起带到 publish 目录。
+    单文件分发时用户只拿到 exe，AGPL 的提示义务要求"能拿到许可文本" ——
+    光写在 README 里不算。
+  -->
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Link="LICENSE">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
