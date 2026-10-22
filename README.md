@@ -93,9 +93,9 @@ later version.
 
 ## 界面
 
-> 发布说明见 [`docs/RELEASE-NOTES-v1.1.0.md`](docs/RELEASE-NOTES-v1.1.0.md)
+> 发布说明见 [`docs/RELEASE-NOTES-v1.3.0.md`](docs/RELEASE-NOTES-v1.3.0.md)
 > （含本版新增内容、下载文件清单与 SHA-256 校验值）。
-> v1.0.0 的说明保留在 [`docs/RELEASE-NOTES-v1.0.0.md`](docs/RELEASE-NOTES-v1.0.0.md)。
+> 历史版本：[v1.1.0](docs/RELEASE-NOTES-v1.1.0.md) · [v1.0.0](docs/RELEASE-NOTES-v1.0.0.md)。
 
 **解析**：粘贴链接自动识别来源（GitHub 仓库 / Release / 单文件 / 网盘分享 / 磁力），
 解析后直接看到结果卡片，可收藏、复制链接或逐层浏览仓库。
