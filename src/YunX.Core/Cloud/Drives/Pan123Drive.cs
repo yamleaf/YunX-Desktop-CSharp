@@ -107,8 +107,16 @@ public sealed partial class Pan123Drive : ICloudDrive
     }
 
     // 分享 key：/s/ 后面的一串（字母数字，常见 10~20 位）
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _shareKeyPatternCache;
+    private static Regex ShareKeyPattern() =>
+        _shareKeyPatternCache ??= new Regex(@"/s/([A-Za-z0-9_-]{5,40})", RegexOptions.Compiled);
+    #else
     [System.Text.RegularExpressions.GeneratedRegex(@"/s/([A-Za-z0-9_-]{5,40})")]
-    private static partial System.Text.RegularExpressions.Regex ShareKeyPattern();
+        private static partial System.Text.RegularExpressions.Regex ShareKeyPattern();
+    #endif
 
     // ================= 签名 =================
 
@@ -150,7 +158,7 @@ public sealed partial class Pan123Drive : ICloudDrive
         string authKey = Crc32Hex(substituted.ToString());
 
         // 2) auth-value
-        int random = Random.Shared.Next(0, 10_000_000);
+        int random = Net48Constants.SharedRandom.Next(0, 10_000_000);
         string data = $"{ts}|{random}|{path}|{SignOs}|{SignVer}|{authKey}";
         string authValue = $"{ts}-{random}-{Crc32Hex(data)}";
         return (authKey, authValue);
@@ -388,8 +396,16 @@ public sealed partial class Pan123Drive : ICloudDrive
         };
     }
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _v2ParamsPatternCache;
+    private static Regex V2ParamsPattern() =>
+        _v2ParamsPatternCache ??= new Regex(@"params=([^&]+)", RegexOptions.Compiled);
+    #else
     [System.Text.RegularExpressions.GeneratedRegex(@"params=([^&]+)")]
-    private static partial System.Text.RegularExpressions.Regex V2ParamsPattern();
+        private static partial System.Text.RegularExpressions.Regex V2ParamsPattern();
+    #endif
 
     /// <summary>123 分享文件无需转存，无临时文件要清理。</summary>
     public Task CleanupAsync(ShareLink share, CancellationToken ct = default)

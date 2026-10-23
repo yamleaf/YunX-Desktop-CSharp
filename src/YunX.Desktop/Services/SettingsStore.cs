@@ -286,7 +286,13 @@ public sealed class SettingsStore
             string json = JsonSerializer.Serialize(toWrite, JsonOpts);
             JsonSerializer.Deserialize<AppSettings>(json, JsonOpts);   // 自检：写出的必须是合法 JSON
             File.WriteAllText(tmp, json);
+#if NET48
+            // net48 没有 File.Move(overwrite) 重载：先删再移（同目录，窗口极短）
+            if (File.Exists(_path)) File.Delete(_path);
+            File.Move(tmp, _path);
+#else
             File.Move(tmp, _path, overwrite: true);
+#endif
         }
         catch
         {

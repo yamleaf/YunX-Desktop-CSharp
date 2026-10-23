@@ -25,6 +25,15 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             WriteCrash("AppDomain", args.ExceptionObject as Exception);
 
+        // ★ 原生库引导必须放在最前面（早于任何 SQLite 调用）。
+        //
+        //   单文件发布时 SQLite.Interop.dll 被嵌在 exe 里，需要解压到磁盘并让
+        //   System.Data.SQLite 能找到它 —— 它不认 AssemblyResolve，只认
+        //   「程序集目录\x64\」和进程 DLL 搜索路径。详见 NativeBootstrapper。
+        //   AppServices（会打开数据库）的构造在 ViewModel 初始化时才发生，
+        //   所以这里的时机是够的。
+        NativeBootstrapper.EnsureNativeLoaded();
+
         // 自定义种子色：必须在建窗之前应用。
         // 主窗口的 XAML 在解析时会查找 Accent* 资源，晚了就来不及。
         // （Dark.xaml 里这些 key 都用 DynamicResource 引用，因此运行中改也能生效。）
@@ -47,6 +56,63 @@ public partial class App : Application
                 WriteCrash("XamlDump", ex);
                 Shutdown(1);
             }
+            return;
+        }
+
+        // 抗锯齿审计：把控件放大 4x 渲染，逐像素统计弧段上的过渡带
+        if (e.Args.Contains("--uiaudit"))
+        {
+            string outDir = e.Args.SkipWhile(a => a != "--uiaudit").Skip(1).FirstOrDefault()
+                            ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "yunx-aa");
+            int rc;
+            try
+            {
+                rc = UiAntiAliasAudit.Run(outDir);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("审计异常：" + ex);
+                rc = 2;
+            }
+            Shutdown(rc);
+            return;
+        }
+
+        // 加密自检：真实程序环境里跑一次最小 GCM 往返（定位 net48 上的 BCrypt 失败）
+        if (e.Args.Contains("--cryptoprobe"))
+        {
+            string outDir = e.Args.SkipWhile(a => a != "--cryptoprobe").Skip(1).FirstOrDefault()
+                            ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "yunx-crypto");
+            int rc;
+            try { rc = RawBcryptProbe.Run(outDir); Console.WriteLine(); rc += CryptoProbe.Run(outDir); }
+            catch (Exception ex) { Console.WriteLine("异常：" + ex); rc = 2; }
+            Shutdown(rc);
+            return;
+        }
+
+        // 账号页诊断：区分「数据没到」和「数据到了但没渲染」—— 两者表现都是空白。
+        if (e.Args.Contains("--accountsdiag"))
+        {
+            var rest = e.Args.SkipWhile(a => a != "--accountsdiag").Skip(1).ToList();
+            string outDir = rest.FirstOrDefault(a => !a.StartsWith("-"))
+                            ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "yunx-accounts");
+            double w = 1000, h = 700;
+            foreach (var a in rest)
+            {
+                if (a.StartsWith("--w=") && double.TryParse(a[4..], out var pw)) w = pw;
+                if (a.StartsWith("--h=") && double.TryParse(a[4..], out var ph)) h = ph;
+            }
+            int rc;
+            try
+            {
+                rc = AccountsPageDiag.Run(outDir, w, h);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("诊断异常：" + ex);
+                rc = 2;
+            }
+            Shutdown(rc);
             return;
         }
 

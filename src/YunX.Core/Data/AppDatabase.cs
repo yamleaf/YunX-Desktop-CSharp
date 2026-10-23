@@ -1,4 +1,6 @@
-﻿using Microsoft.Data.Sqlite;
+#if !NET48
+using Microsoft.Data.Sqlite;
+#endif
 using System.IO;
 
 namespace YunX.Core.Data;
@@ -25,15 +27,24 @@ public sealed class AppDatabase : IDisposable
         FilePath = dbPath;
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
+#if NET48
+        // System.Data.SQLite 的连接串语法与 Microsoft.Data.Sqlite 不同，
+        // 差异收敛在 Compat/Sqlite48.cs 里。
+        string connString = Sqlite48.Build(dbPath, SqliteOpenMode48.ReadWriteCreate, pooling: true);
+#else
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = dbPath,
             Mode = SqliteOpenMode.ReadWriteCreate,
+            // Shared 缓存：本项目单进程、共享连接 + 锁，Shared 能减少重复页缓存。
+            // net48 走 WAL 已达成同样目标，故不需要（见 Sqlite48 注释）。
             Cache = SqliteCacheMode.Shared,
             Pooling = true,
         };
+        string connString = builder.ToString();
+#endif
 
-        _conn = new SqliteConnection(builder.ToString());
+        _conn = new SqliteConnection(connString);
         _conn.Open();
 
         // WAL：读写不互相阻塞，掉电恢复能力也更好

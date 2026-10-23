@@ -73,9 +73,17 @@ public sealed partial class C139Drive : ICloudDrive
         };
     }
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _linkIdPatternCache;
+    private static Regex LinkIdPattern() =>
+        _linkIdPatternCache ??= new Regex(@"[?&](?:f|linkID|linkId)=([A-Za-z0-9_\-]{6,64})", System.Text.RegularExpressions.RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [System.Text.RegularExpressions.GeneratedRegex(@"[?&](?:f|linkID|linkId)=([A-Za-z0-9_\-]{6,64})",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex LinkIdPattern();
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+        private static partial System.Text.RegularExpressions.Regex LinkIdPattern();
+    #endif
 
     // ================= 加密 / 签名 =================
 
@@ -84,7 +92,7 @@ public sealed partial class C139Drive : ICloudDrive
     /// <summary>明文 JSON → base64(IV ‖ ciphertext)。</summary>
     private static string EncryptBody(string plaintext)
     {
-        byte[] iv = RandomNumberGenerator.GetBytes(16);
+        byte[] iv = Rng48.GetBytes(16);
         using var aes = Aes.Create();
         aes.Key = AesKey;
         aes.IV = iv;
@@ -101,8 +109,18 @@ public sealed partial class C139Drive : ICloudDrive
         byte[] raw = Convert.FromBase64String(base64);
         if (raw.Length <= 16) throw new CloudException("响应密文过短");
 
+#if NET48
+        // net48 的数组不支持 range 语法（需要 RuntimeHelpers.GetSubArray），
+        // 而那个方法在 .NET Framework 的 BCL 里不存在，无法用垫片补 ——
+        // 只能退化为 Array.Copy。
+        byte[] iv = new byte[16];
+        Array.Copy(raw, 0, iv, 0, 16);
+        byte[] ct = new byte[raw.Length - 16];
+        Array.Copy(raw, 16, ct, 0, ct.Length);
+#else
         byte[] iv = raw[..16];
         byte[] ct = raw[16..];
+#endif
 
         using var aes = Aes.Create();
         aes.Key = AesKey;
@@ -123,7 +141,7 @@ public sealed partial class C139Drive : ICloudDrive
     }
 
     private static string Md5Hex(string s) =>
-        Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
+        Helpers.ToHexString(Hash48.Md5(Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
 
     /// <summary>
     /// <c>mcloud-sign</c> 头：<c>{ts},{rand},{sign}</c>。
@@ -139,7 +157,7 @@ public sealed partial class C139Drive : ICloudDrive
         const string pool = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         var rand = new StringBuilder(16);
         for (int i = 0; i < 16; i++)
-            rand.Append(pool[Random.Shared.Next(pool.Length)]);
+            rand.Append(pool[Net48Constants.SharedRandom.Next(pool.Length)]);
 
         string encoded = EncodeUriComponent(bodyJson);
         var sorted = new string(encoded.OrderBy(c => (int)c).ToArray());

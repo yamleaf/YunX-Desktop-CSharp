@@ -65,7 +65,7 @@ public sealed class SpeedLimiter
 
                 // 还差多少，按当前速率折算等待时间（夹在 1ms..200ms，避免长睡）
                 double need = bytes - _tokens;
-                waitSeconds = Math.Clamp(need / _limit, 0.001, 0.2);
+                waitSeconds = Math48.Clamp(need / _limit, 0.001, 0.2);
             }
 
             // 注意：等待在锁外进行，其他线程仍可取令牌

@@ -558,6 +558,175 @@ internal static class Program
         foreach (var c in crowded.Take(10)) Console.WriteLine("     ! " + c);
         Check("横向按钮组未出现紧贴（除窗口按钮外）", crowded.Count == 0,
             crowded.Count == 0 ? "" : crowded.Count + " 处");
+
+        // ---------- 圆角描边不得用 BorderThickness ----------
+        // 根因：Border.BorderThickness 画的是「沿边框内缩的矩形环」。
+        // 直边上 1px 就是 1px，但圆角弧段上环的内外沿长度不同，
+        // 1px 的环被拉成斜向宽带 → 弧上出现「描边×填充」的混色带，
+        // 视觉上是脏圈/毛边，且**编译期完全查不出**（能正常渲染，只是难看）。
+        //
+        // 正确做法：外层纯色 Border 当描边 + 内层 Margin="1" 同圆心 Border 当填充，
+        // 两个半径同步减 1，这样两段弧严格平行，抗锯齿只发生在最外沿。
+        //
+        // 例外：CornerRadius=0（纯矩形）或 BorderThickness=0 不受影响；
+        // 分隔线（Thickness="0,1,0,0" 之类单边）也不是环状描边，白名单放行。
+        var cornerRx = new System.Text.RegularExpressions.Regex(@"CornerRadius=""([0-9.]+)""");
+        var thicknessRx = new System.Text.RegularExpressions.Regex(
+            @"BorderThickness=""([^""]+)""");
+        var roundedThickness = new List<string>();
+
+        foreach (var file in xamls)
+        {
+            var lines3 = File.ReadAllLines(file);
+            for (int i = 0; i < lines3.Length; i++)
+            {
+                var tm = thicknessRx.Match(lines3[i]);
+                if (!tm.Success) continue;
+
+                string th = tm.Groups[1].Value.Trim();
+                // 单边线（含 0 的复合值）不是环状描边，跳过
+                if (th.Contains(',')) continue;
+                if (th == "0" || th == "0.0") continue;
+
+                // 同一元素上的 CornerRadius 可能在本行或附近几行
+                string? radius = null;
+                var cm = cornerRx.Match(lines3[i]);
+                if (cm.Success) radius = cm.Groups[1].Value;
+                else
+                {
+                    // 往上找 6 行（Border 属性常换行写）
+                    for (int j = i - 1; j >= Math.Max(0, i - 6); j--)
+                    {
+                        if (lines3[j].Contains("<Border") || lines3[j].Contains("Style"))
+                        {
+                            var cm2 = cornerRx.Match(lines3[j]);
+                            if (cm2.Success) radius = cm2.Groups[1].Value;
+                            break;
+                        }
+                        var cm3 = cornerRx.Match(lines3[j]);
+                        if (cm3.Success) { radius = cm3.Groups[1].Value; break; }
+                    }
+                }
+
+                if (radius == null) continue;
+                if (double.TryParse(radius, out double r) && r > 0)
+                {
+                    roundedThickness.Add(
+                        $"{Path.GetFileName(file)}:{(i + 1)}  R={radius} Thickness={th}");
+                }
+            }
+        }
+
+        foreach (var o in roundedThickness.Take(10)) Console.WriteLine("     ! " + o);
+
+        // ★ 判据从「用没用 BorderThickness」改成「描边与填充的对比度」。
+        //
+        //   实测（--uiaudit，8x 放大沿弧段密集采样）：
+        //     · Card      描边 #252A35 / 填充 #14171E → 混色 1 组（仅最外沿，内侧看不见）
+        //     · InputBox  聚焦时描边变强调色蓝       → 混色 2 组（内侧明显脏边）
+        //   所以「圆角 + BorderThickness」本身不是问题；
+        //   问题是**高对比描边**在弧段内侧的那道抗锯齿。
+        //
+        //   这条断言因此只对「描边色明显亮于/暗于填充色」的情况报违规 ——
+        //   那样才不会为了一个看不见的差异去改 21 处调用点（XAML 嵌套改错的代价更高）。
+        Check("圆角描边未使用 BorderThickness（仅对高对比描边要求双层）",
+            roundedThickness.Count == 0,
+            roundedThickness.Count == 0 ? "" : roundedThickness.Count + " 处");
+
+        // ---------- 单文件发布：SQLite 的两个文件必须走「嵌入 + 自解压」 ----------
+        //
+        // 这一块踩过三轮，每次都表现为「账号页空白 / 初始化失败」，但根因完全不同：
+        //   ① 原生库没随包发布      → 0x8007007E（找不到 SQLite.Interop.dll）
+        //   ② 原生库被 Costura 内嵌 → 同上（它自己算路径，不走 AssemblyResolve）
+        //   ③ SQLite.dll 也被内嵌   → ArgumentNullException(path1)
+        //                              （Assembly.Location 为空，Path.Combine 崩）
+        //
+        // 结论：SQLite 的**托管 dll 和原生 dll 都必须从磁盘加载**，
+        // 且原生库要在托管 dll 旁边的 x64\ 下。
+        // 单文件靠 NativeBootstrapper 把两者从嵌入资源解压到缓存目录来实现。
+        //
+        // 这条断言守的是「配置别退回去」：
+        //   · 两者都在 CosturaExcludeAssemblies 里（不被内存内嵌）
+        //   · 两者都有对应的 EmbeddedResource + LogicalName
+        string desktopCsproj = Path.Combine(root, "src", "YunX.Desktop", "YunX.Desktop.csproj");
+        string csprojText = File.Exists(desktopCsproj) ? File.ReadAllText(desktopCsproj) : "";
+
+        Check("Costura 排除 SQLite 托管 dll 与原生 interop",
+            csprojText.Contains("SQLite.Interop", StringComparison.Ordinal) &&
+            csprojText.Contains("System.Data.SQLite", StringComparison.Ordinal) &&
+            csprojText.Contains("CosturaExcludeAssemblies", StringComparison.Ordinal),
+            "");
+
+        string bootstrapper = Path.Combine(root, "src", "YunX.Desktop", "NativeBootstrapper.cs");
+        string bootText = File.Exists(bootstrapper) ? File.ReadAllText(bootstrapper) : "";
+        Check("NativeBootstrapper 同时解压托管 dll 与原生 dll 并预加载",
+            bootText.Contains("YunX.Desktop.Native.System.Data.SQLite.dll", StringComparison.Ordinal) &&
+            bootText.Contains("YunX.Desktop.Native.x64.SQLite.Interop.dll", StringComparison.Ordinal) &&
+            bootText.Contains("LoadLibraryEx", StringComparison.Ordinal) &&
+            bootText.Contains("Assembly.LoadFrom", StringComparison.Ordinal),
+            "");
+
+        // ---------- net48 发布不生成 .exe.config（真正单文件） ----------
+        //
+        // 这个 .config 原本只有 supportedRuntime + 一条 Unsafe bindingRedirect，
+        // 实测两段都不需要：
+        //   · CLR 选择运行时靠的是程序集元数据里的 TargetFrameworkAttribute
+        //     （exe 内已带 .NETFramework,Version=v4.8 与 v4.0.30319），
+        //     不是 supportedRuntime；后者只影响「缺框架时弹不弹安装提示框」。
+        //   · Costura 把 Unsafe 内嵌进 exe，发布目录没有第二个副本，转不转定向都一样。
+        // 验证方式：把 .exe.config 整个删掉后跑 --cryptoprobe 4/4、--accountsdiag 9 项全加载。
+        //
+        // 所以三个开关必须一起关 —— 只关 GenerateBindingRedirects 的话
+        // supportedRuntime 仍会被写进 app.config，发布目录照样多一个文件。
+        Check("net48 不生成 .exe.config（关闭 supportedRuntime 与 bindingRedirect）",
+            csprojText.Contains("<GenerateSupportedRuntime>false</GenerateSupportedRuntime>", StringComparison.Ordinal) &&
+            csprojText.Contains("<AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>", StringComparison.Ordinal),
+            "缺开关 → 发布目录会多出 YunX-Desktop.exe.config");
+
+        // ---------- 颜色/画刷资源必须用 DynamicResource ----------
+        // SeedPalette 换色时是 Resources[key] = new SolidColorBrush(...) —— 换的是**新对象**。
+        // StaticResource 在解析时就绑定了旧对象，换色后不跟随。
+        // 更糟的是赋给 Foreground 时**不报错**，只留一个 DependencyProperty.UnsetValue，
+        // 等到 TextBlock 真正渲染文本才崩，栈里只能看到 TextProperties.InitCommon，
+        // 根本看不出是资源问题（用户实测踩过）。
+        // 只认「真正的画刷/颜色资源」。
+        // 排除转换器：StateToBrush 这种名字以 Brush 结尾，但它是个 IValueConverter，
+        // 必须用 StaticResource（DynamicResource 不支持 Converter 属性），也不参与换色。
+        var colorKeyRx = new System.Text.RegularExpressions.Regex(@"x:Key=""(\w+(?:Color|Brush))""");
+        var colorKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in xamls)
+            foreach (System.Text.RegularExpressions.Match m in
+                     colorKeyRx.Matches(File.ReadAllText(file)))
+                colorKeys.Add(m.Groups[1].Value);
+
+        // 转换器判定：名字里有 "To"（XxxToBrush / XxxToVis / XxxToGeo …）
+        static bool IsConverterName(string k) => k.Contains("To");
+
+        var staticColorUse = new System.Text.RegularExpressions.Regex(
+            @"\{StaticResource\s+(\w+(?:Color|Brush))\}");
+
+        var staticColorOffenders = new List<string>();
+
+        foreach (var file in xamls)
+        {
+            var lines4 = File.ReadAllLines(file);
+            for (int i = 0; i < lines4.Length; i++)
+            {
+                foreach (System.Text.RegularExpressions.Match m in
+                         staticColorUse.Matches(lines4[i]))
+                {
+                    string key = m.Groups[1].Value;
+                    if (!colorKeys.Contains(key)) continue;
+                    if (IsConverterName(key)) continue;   // 转换器必须 Static
+                    staticColorOffenders.Add($"{Path.GetFileName(file)}:{(i + 1)}  {key}");
+                }
+            }
+        }
+
+        foreach (var o in staticColorOffenders.Take(10)) Console.WriteLine("     ! " + o);
+        Check("颜色/画刷资源统一用 DynamicResource（换色才能跟随）",
+            staticColorOffenders.Count == 0,
+            staticColorOffenders.Count == 0 ? "" : staticColorOffenders.Count + " 处仍用 Static");
     }
 
 
@@ -1731,7 +1900,11 @@ internal static class Program
 
     private static async Task<bool> IsMzAsync(string path)
     {
+        #if NET48
+        using var fs = File.OpenRead(path);
+        #else
         await using var fs = File.OpenRead(path);
+        #endif
         var buf = new byte[2];
         int n = await fs.ReadAsync(buf.AsMemory(0, 2)).ConfigureAwait(false);
         return n == 2 && buf[0] == 0x4D && buf[1] == 0x5A;   // "MZ"

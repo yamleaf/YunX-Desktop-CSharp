@@ -170,7 +170,7 @@ public static class UrlClassifier
         string owner = seg[0], repo = seg[1], fmt = seg[2];
         if (fmt is not ("zip" or "tar.gz")) return null;
 
-        var rest = string.Join('/', seg.Skip(3));
+        var rest = string.Join("/", seg.Skip(3));
         if (rest.Equals("HEAD", StringComparison.OrdinalIgnoreCase))
             return $"https://github.com/{owner}/{repo}/archive/HEAD.{fmt}";
         return $"https://github.com/{owner}/{repo}/archive/{rest}.{fmt}";

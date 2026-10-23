@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.RegularExpressions;
 using YunX.Core.Mirrors;
 using YunX.Core.Net;
@@ -378,8 +378,16 @@ public sealed partial class ContentResolver
         return new List<ReleaseAsset>();
     }
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _assetHrefCache;
+    private static Regex AssetHref() =>
+        _assetHrefCache ??= new Regex(@"href=""(/[^""]+/releases/download/[^""]+)""", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"href=""(/[^""]+/releases/download/[^""]+)""", RegexOptions.IgnoreCase)]
-    private static partial Regex AssetHref();
+        private static partial Regex AssetHref();
+    #endif
 
     /// <summary>
     /// 资产大小：优先取 GitHub 页面上那个「右对齐的独立 span」，
@@ -390,13 +398,29 @@ public sealed partial class ContentResolver
     /// 和 aria 文本）。原来只截 600 字符，18 个资产<b>一个都没取到大小</b>，
     /// 界面上就全显示成 “—”。</para>
     /// </summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _assetSizeSpanCache;
+    private static Regex AssetSizeSpan() =>
+        _assetSizeSpanCache ??= new Regex(@"color-fg-muted text-right[^>]*>\s*([0-9.,]+)\s*(Bytes|KB|MB|GB|TB)\s*<", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"color-fg-muted text-right[^>]*>\s*([0-9.,]+)\s*(Bytes|KB|MB|GB|TB)\s*<",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex AssetSizeSpan();
+            RegexOptions.IgnoreCase)]
+        private static partial Regex AssetSizeSpan();
+    #endif
 
     /// <summary>裸的大小文本（无 class 定位时的兜底，例如页面结构改版）。</summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _sizePatternCache;
+    private static Regex SizePattern() =>
+        _sizePatternCache ??= new Regex(@"\b([0-9]+(?:\.[0-9]+)?)\s*(Bytes|KB|MB|GB|TB)\b", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"\b([0-9]+(?:\.[0-9]+)?)\s*(Bytes|KB|MB|GB|TB)\b")]
-    private static partial Regex SizePattern();
+        private static partial Regex SizePattern();
+    #endif
 
     /// <summary>
     /// 取仓库最新 Release 的 tag 名。
@@ -445,8 +469,16 @@ public sealed partial class ContentResolver
     }
 
     /// <summary>Gist 页面里那个 <c>.../archive/&lt;sha&gt;.zip</c> 路径。</summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _gistArchivePathCache;
+    private static Regex GistArchivePath() =>
+        _gistArchivePathCache ??= new Regex(@"/[^""'/]+/[0-9a-f]{20,}/archive/[0-9a-f]+\.zip", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"/[^""'/]+/[0-9a-f]{20,}/archive/[0-9a-f]+\.zip", RegexOptions.IgnoreCase)]
-    private static partial Regex GistArchivePath();
+        private static partial Regex GistArchivePath();
+    #endif
 
     /// <summary>
     /// 从 Gist 页面 HTML 里取归档 zip 的绝对地址；取不到返回 null。
@@ -464,7 +496,7 @@ public sealed partial class ContentResolver
             using var resp = await client.GetAsync(url, ct).ConfigureAwait(false);
             if (resp.StatusCode != System.Net.HttpStatusCode.OK) return null;
 
-            string html = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            string html = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
             var m = GistArchivePath().Match(html);
             return m.Success ? "https://gist.github.com" + m.Value : null;
         }
@@ -476,8 +508,16 @@ public sealed partial class ContentResolver
     }
 
     /// <summary>从 <c>/owner/repo/releases/tag/&lt;tag&gt;</c> 里抠出 tag。</summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _latestTagInPathCache;
+    private static Regex LatestTagInPath() =>
+        _latestTagInPathCache ??= new Regex(@"/releases/tag/([^/]+)/?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"/releases/tag/([^/]+)/?$", RegexOptions.IgnoreCase)]
-    private static partial Regex LatestTagInPath();
+        private static partial Regex LatestTagInPath();
+    #endif
 
     /// <summary>单个条目窗口上限：页面每个资产条目实测 4~7.5KB，给足余量。</summary>
     private const int AssetWindow = 8192;
@@ -530,7 +570,7 @@ public sealed partial class ContentResolver
                 if (resp.StatusCode != HttpStatusCode.OK) return null;
 
                 string html = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                if (!html.Contains("/releases/download/", StringComparison.Ordinal)) return null;
+                if (html.IndexOf("/releases/download/", StringComparison.Ordinal) < 0) return null;
 
                 var list = new List<ReleaseAsset>();
                 var seen = new HashSet<string>();

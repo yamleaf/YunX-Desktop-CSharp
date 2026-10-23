@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!--
+      性能基准工具：同一份场景代码在 net8 / net48 各编译一次，
+      用中位数对比下载速度。这是验证「迁 net48 不掉速」的量化手段，
+      不能只靠 PoC 的合成数据（PoC 测的是纯写盘，不含 HTTP 与调度）。
+
+      不参与发布，只在开发时手动跑。
+    -->
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
+    <RootNamespace>DownloadBench</RootNamespace>
+    <AssemblyName>DownloadBench</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\YunX.Core\YunX.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 与 YunX.Smoke 同理：net48 默认 RID 是 win7-x86，与 PlatformTarget=x64 冲突 -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <RuntimeIdentifier>win7-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+</Project>

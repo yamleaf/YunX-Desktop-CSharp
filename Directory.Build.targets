@@ -1,0 +1,65 @@
+<Project>
+
+  <!--
+    ==========================================================================
+     与目标框架相关的衍生配置。
+
+     多目标框架（TargetFrameworks）**不在这里**，请见各项目 csproj 的注释：
+     Microsoft.NET.TargetFrameworkInference.targets 在 NuGet 还原阶段就要读
+     $(TargetFramework)，而 .targets 求值比它晚，写在那边会抛 NETSDK1013。
+
+     本文件只处理「已经知道当前 TFM 之后」的配置：
+     DefineConstants、PlatformTarget、按框架区分的 PackageReference。
+    ==========================================================================
+  -->
+
+  <!-- net48：定义 NET48 供 #if 分支使用，并锁定 x64 -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <!-- SDK 风格项目不会自动定义 NET48，必须手工加 -->
+    <DefineConstants>$(DefineConstants);NET48</DefineConstants>
+    <!--
+      为什么用 Platform 而不是 PlatformTarget：
+      net48 的单目标默认 RuntimeIdentifier 是 win7-x86（.NET Framework 默认 32 位）。
+      一旦设了 PlatformTarget=x64，RuntimeIdentifierInference 就会报
+      NETSDK1032「win7-x86 与 x64 不兼容」—— 它在 targets 求值之后才跑，
+      而我们的 PlatformTarget 已经在 targets 里设好了，冲突无法靠条件绕过。
+      改用 Platform=x64：它会把默认 RID 一起推到 win7-x64，两边一致。
+
+      x64 是硬要求：SQLite 原生 interop 与 WriteFile/OVERLAPPED 的
+      SafeFileHandle 布局都按 64 位准备。
+    -->
+    <Platform>x64</Platform>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <!-- P/Invoke（WriteFile + OVERLAPPED）需要 unsafe 块做栈上 OVERLAPPED 与缓冲指针 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!--
+    net48 的引用程序集里 System.Net.Http **不在默认引用集合**内。
+    net8 的 Microsoft.NETCore.App 自带它，net48 必须显式引用（框架程序集，不是 NuGet）。
+    这个坑很隐蔽：不引用时错误信息是「命名空间 System.Net 中不存在 Http」，
+    看着像 ImplicitUsings 的问题，其实是缺引用 —— 两件事都要做（引用 + global using）。
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Net.Http.WebRequest" />
+  </ItemGroup>
+
+
+  <!--
+    在没装 .NET Framework 目标包的机器上也能编译（CI / 新机器必需）。
+    PrivateAssets=all：这个包只用于编译期引用程序集，不能进最终产物。
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

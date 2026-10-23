@@ -43,9 +43,9 @@ public static class SeedPalette
         // 深色界面下种子色可能太暗（深红）导致文字对比不足，
         // 也可能太亮（浅黄）导致白字看不清：都收进能用的亮度区间。
         // 0.42~0.62 是实测「在 #0F1115 背景上既够亮又不刺眼」的范围。
-        l = Math.Clamp(l, 0.42, 0.62);
+        l = Math48.Clamp(l, 0.42, 0.62);
         // 饱和度过低会让强调色看起来像灰色
-        s = Math.Clamp(s, 0.45, 0.95);
+        s = Math48.Clamp(s, 0.45, 0.95);
 
         Color baseColor = FromHsl(h, s, l);
 
@@ -177,8 +177,8 @@ public static class SeedPalette
     public static Color FromHsl(double h, double s, double l)
     {
         h = ((h % 360) + 360) % 360;
-        s = Math.Clamp(s, 0, 1);
-        l = Math.Clamp(l, 0, 1);
+        s = Math48.Clamp(s, 0, 1);
+        l = Math48.Clamp(l, 0, 1);
 
         double c = (1 - Math.Abs(2 * l - 1)) * s;
         double x = c * (1 - Math.Abs((h / 60) % 2 - 1));

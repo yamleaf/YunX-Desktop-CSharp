@@ -93,9 +93,9 @@ internal static class EngineTests
                 $"mode={result.Mode} chunks={result.ChunkCount}");
             check("分片数 > 1", result.ChunkCount > 1, $"{result.ChunkCount}");
 
-            var onDisk = await File.ReadAllBytesAsync(result.FilePath).ConfigureAwait(false);
+            var onDisk = await FileCompat.ReadAllBytesAsync(result.FilePath).ConfigureAwait(false);
             check("内容与服务器完全一致（含分片校验通过）",
-                SHA256.HashData(onDisk).SequenceEqual(SHA256.HashData(payload)));
+                Hash48.Sha256(onDisk).SequenceEqual(Hash48.Sha256(payload)));
 
             check("完成后不残留 .part", !File.Exists(result.FilePath + ".part"));
             check("服务器收到过 Range 请求", server.LastRequestHeaders.Contains("Range:", StringComparison.OrdinalIgnoreCase));
@@ -136,9 +136,9 @@ internal static class EngineTests
 
             check("Range 被忽略后降级单流", result.Mode == "single", $"mode={result.Mode}");
 
-            var onDisk = await File.ReadAllBytesAsync(result.FilePath).ConfigureAwait(false);
+            var onDisk = await FileCompat.ReadAllBytesAsync(result.FilePath).ConfigureAwait(false);
             check("降级后内容仍正确（不能把全量响应拼在分片后面）",
-                SHA256.HashData(onDisk).SequenceEqual(SHA256.HashData(server.Payload)));
+                Hash48.Sha256(onDisk).SequenceEqual(Hash48.Sha256(server.Payload)));
         }).ConfigureAwait(false);
 
         // ---------- 4. 探测通过但直链随后全部 403 → 必须有界失败 ----------
@@ -215,9 +215,9 @@ internal static class EngineTests
                 ChunkRetries = 5,
             }, timeoutSeconds: 40).ConfigureAwait(false);
 
-            var onDisk = await File.ReadAllBytesAsync(result.FilePath).ConfigureAwait(false);
+            var onDisk = await FileCompat.ReadAllBytesAsync(result.FilePath).ConfigureAwait(false);
             check("429 限流后最终下载成功",
-                SHA256.HashData(onDisk).SequenceEqual(SHA256.HashData(server.Payload)),
+                Hash48.Sha256(onDisk).SequenceEqual(Hash48.Sha256(server.Payload)),
                 $"请求 {server.Requests} 次");
         }).ConfigureAwait(false);
 
@@ -363,7 +363,7 @@ internal static class EngineTests
             var seeded = new byte[total];
             Array.Copy(server.Payload, seeded, half);
             string part = Path.Combine(dir, "file.bin.part");
-            await File.WriteAllBytesAsync(part, seeded).ConfigureAwait(false);
+            await FileCompat.WriteAllBytesAsync(part, seeded).ConfigureAwait(false);
 
             new PartMetadata
             {
@@ -383,9 +383,9 @@ internal static class EngineTests
 
             check("复用既有断点（Resumed=true）", r.Resumed, $"resumed={r.Resumed}");
 
-            var onDisk = await File.ReadAllBytesAsync(r.FilePath).ConfigureAwait(false);
+            var onDisk = await FileCompat.ReadAllBytesAsync(r.FilePath).ConfigureAwait(false);
             check("续传后内容与服务器一致（断点没拼错位）",
-                SHA256.HashData(onDisk).SequenceEqual(SHA256.HashData(server.Payload)),
+                Hash48.Sha256(onDisk).SequenceEqual(Hash48.Sha256(server.Payload)),
                 $"{onDisk.Length}/{total} 字节");
 
             // 只该请求后半段：若从头重下，续传就白做了
@@ -406,7 +406,7 @@ internal static class EngineTests
 
             // 模拟单流被中断：没有预分配，长度就是已下载量
             string part = Path.Combine(dir, "file.bin.part");
-            await File.WriteAllBytesAsync(part, server.Payload.AsSpan(0, (int)half).ToArray())
+            await FileCompat.WriteAllBytesAsync(part, server.Payload.AsSpan(0, (int)half).ToArray())
                 .ConfigureAwait(false);
 
             new PartMetadata
@@ -430,9 +430,9 @@ internal static class EngineTests
 
             check("单流：半截 part 能复用续传", r.Resumed, $"resumed={r.Resumed} mode={r.Mode}");
 
-            var onDisk = await File.ReadAllBytesAsync(r.FilePath).ConfigureAwait(false);
+            var onDisk = await FileCompat.ReadAllBytesAsync(r.FilePath).ConfigureAwait(false);
             check("单流续传后内容正确",
-                SHA256.HashData(onDisk).SequenceEqual(SHA256.HashData(server.Payload)),
+                Hash48.Sha256(onDisk).SequenceEqual(Hash48.Sha256(server.Payload)),
                 $"{onDisk.Length}/{total}");
 
             // 不该再有一份被改名的孤儿 part（旧逻辑会 EnsureUnique 成 "file (1).bin.part"）
@@ -613,9 +613,9 @@ internal static class EngineTests
         if (digest == null) { st.Dispose(); return; }
 
         var (headHex, tailHex, headLen, tailLen) = digest.Value;
-        string expectHead = Convert.ToHexString(SHA256.HashData(data.AsSpan(0, headLen))).ToLowerInvariant();
-        string expectTail = Convert.ToHexString(
-            SHA256.HashData(data.AsSpan(size - tailLen, tailLen))).ToLowerInvariant();
+        string expectHead = Helpers.ToHexString(Hash48.Sha256(data.AsSpan(0, headLen))).ToLowerInvariant();
+        string expectTail = Helpers.ToHexString(
+            Hash48.Sha256(data.AsSpan(size - tailLen, tailLen))).ToLowerInvariant();
 
         check("头部哨兵 = 前 16KB", headHex == expectHead, $"headLen={headLen}");
         check("尾部哨兵 = 后 16KB", tailHex == expectTail, $"tailLen={tailLen}");
@@ -644,8 +644,8 @@ internal static class EngineTests
         st3.BeginHash();
         st3.HashBytes(0, data);                      // 写入侧按「正确位置」算摘要
         var d3 = st3.FinishHash()!.Value;
-        string actualHead = Convert.ToHexString(
-            SHA256.HashData(shifted.AsSpan(0, d3.HeadLen))).ToLowerInvariant();
+        string actualHead = Helpers.ToHexString(
+            Hash48.Sha256(shifted.AsSpan(0, d3.HeadLen))).ToLowerInvariant();
         check("数据错位会被哨兵检出", actualHead != d3.Head);
         st3.Dispose();
     }
@@ -862,7 +862,13 @@ internal sealed class LocalFileServer : IDisposable
         while (!_cts.IsCancellationRequested)
         {
             TcpClient client;
+            #if NET48
+            // net48 的 TcpListener.AcceptTcpClientAsync 没有 ct 重载。
+            // 取消时 Stop() 会让它抛异常，catch 里 return 即可 —— 语义等价。
+            try { client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false); }
+#else
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token).ConfigureAwait(false); }
+#endif
             catch { return; }
 
             _ = Task.Run(() => HandleAsync(client), CancellationToken.None);
@@ -878,7 +884,7 @@ internal sealed class LocalFileServer : IDisposable
                 using var ns = client.GetStream();
                 using var reader = new StreamReader(ns, Encoding.ASCII, false, 4096, leaveOpen: true);
 
-                string? requestLine = await reader.ReadLineAsync(_cts.Token).ConfigureAwait(false);
+                string? requestLine = await ReadLineCompatAsync(reader).ConfigureAwait(false);
                 if (string.IsNullOrEmpty(requestLine)) return;
 
                 int index = Interlocked.Increment(ref _requests);
@@ -886,7 +892,7 @@ internal sealed class LocalFileServer : IDisposable
                 var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 while (true)
                 {
-                    string? line = await reader.ReadLineAsync(_cts.Token).ConfigureAwait(false);
+                    string? line = await ReadLineCompatAsync(reader).ConfigureAwait(false);
                     if (line == null || line.Length == 0) break;
                     int colon = line.IndexOf(':');
                     if (colon > 0) headers[line[..colon].Trim()] = line[(colon + 1)..].Trim();
@@ -1022,5 +1028,24 @@ internal sealed class LocalFileServer : IDisposable
         try { _listener.Stop(); } catch { /* ignore */ }
         try { _accept.Wait(TimeSpan.FromSeconds(1)); } catch { /* ignore */ }
         _cts.Dispose();
+    }
+
+    /// <summary>
+    /// <c>StreamReader.ReadLineAsync(ct)</c> 的跨框架包装。
+    /// net48 只有无参版 —— 测试服务端读请求行/头是短操作，取消由 Stop() 兜底。
+    /// </summary>
+    private static
+#if NET48
+        Task<string?>
+#else
+        ValueTask<string?>
+#endif
+        ReadLineCompatAsync(StreamReader reader)
+    {
+#if NET48
+        return reader.ReadLineAsync();
+#else
+        return reader.ReadLineAsync(CancellationToken.None);
+#endif
     }
 }

@@ -1,0 +1,22 @@
+# ---------- 构建产物 ----------
+bin/
+obj/
+publish/
+*.pdb
+*.user
+*.suo
+.vs/
+
+# Costura.Fody 的中间产物。单独列出来是因为 obj 被清掉时
+# 这些文件若散落在别处，会让织入阶段误判「输出已是最新」，
+# 结果是 exe 内嵌旧 payload + 发布目录冒出一堆 dll。
+FodyWeavers.xsd
+
+# ---------- 发布目录里不该进仓库的东西 ----------
+publish/**/*.rar
+publish/**/*.zip
+
+# ---------- 系统 ----------
+Thumbs.db
+desktop.ini
+.DS_Store

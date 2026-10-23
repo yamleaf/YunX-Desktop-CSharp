@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Directory.Build.props 在项目文件的最早期求值，此时 TargetFramework 尚未解析
+    （它是 csproj 里的属性，props 比它先读）。因此这里绝不能写
+    形如 Condition="'$(TargetFramework)'=='net48'" 的条件 —— 条件永远不成立，
+    会被静默跳过。与目标框架相关的配置一律放 Directory.Build.targets。
+  -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

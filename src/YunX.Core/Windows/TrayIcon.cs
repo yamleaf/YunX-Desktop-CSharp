@@ -162,7 +162,13 @@ public sealed class TrayIcon : IDisposable
         string exe;
         try
         {
+#if NET48
+            // net48 没有 Environment.ProcessPath（net6+），用 MainModule 兜底。
+            // MainModule 在极少数情况下会抛（权限不足），已有 try/catch 罩着。
+            exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
+#else
             exe = Environment.ProcessPath ?? "";
+#endif
             if (exe.Length == 0) return IntPtr.Zero;
         }
         catch

@@ -114,7 +114,7 @@ public static class MagnetLink
         int q = url.IndexOf('?');
         if (q < 0) return "";
 
-        foreach (string part in url[(q + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+        foreach (string part in url.Substring(q + 1).Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             int eq = part.IndexOf('=');
             if (eq <= 0) continue;

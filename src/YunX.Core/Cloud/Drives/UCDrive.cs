@@ -63,6 +63,14 @@ public sealed partial class UCDrive : QuarkDrive
         };
     }
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _ucShareIdPatternCache;
+    private static Regex UcShareIdPattern() =>
+        _ucShareIdPatternCache ??= new Regex(@"/s/([A-Za-z0-9]{6,32})", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"/s/([A-Za-z0-9]{6,32})")]
-    private static partial Regex UcShareIdPattern();
+        private static partial Regex UcShareIdPattern();
+    #endif
 }

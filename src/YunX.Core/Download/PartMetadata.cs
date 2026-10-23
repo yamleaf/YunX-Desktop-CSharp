@@ -112,7 +112,15 @@ public sealed class PartMetadata
                     fs.Write(payload, 0, payload.Length);
                     fs.Flush(flushToDisk: true);
                 }
+#if NET48
+                // net48 的 File.Move 没有 overwrite 重载：先删目标再移。
+                // 这里的 tmp→path 是同一目录内的原子替换，删了再移的窗口极短，
+                // 且失败时 tmp 还在，调用方的 catch 会保留它。
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tmp, path);
+#else
                 File.Move(tmp, path, overwrite: true);
+#endif
             }
             catch
             {

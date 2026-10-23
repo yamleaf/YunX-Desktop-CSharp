@@ -2,24 +2,56 @@
 
   <PropertyGroup>
     <!--
-      net8.0-windows 而非 net8.0：DPAPI（ProtectedData）与 SetThreadExecutionState 等
-      Windows 专有能力需要 Windows 目标框架。本项目定位就是 Windows 桌面工具，
-      不做跨平台承诺，直接用 windows TFM 可以省掉大量条件编译。
+      多目标：
+        net8.0-windows —— 自包含单文件发布（70MB，零安装）
+        net48          —— 依赖系统自带的 .NET Framework 4.8（约 5MB，Win10 1903+/Win11 自带）
+
+      必须写在这里而不是 Directory.Build.targets：TargetFrameworkInference 在
+      NuGet 还原阶段就要读 $(TargetFramework)/$(TargetFrameworks)，而 .targets
+      求值比它晚，写在那边会抛 NETSDK1013。目标框架相关的**衍生**配置
+      （DefineConstants / PlatformTarget / 条件 PackageReference）才放 .targets。
+
+      用 windows TFM 而非 net8.0：DPAPI（ProtectedData）与 SetThreadExecutionState
+      等 Windows 专有能力需要 Windows 目标框架。
     -->
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>12</LangVersion>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
     <RootNamespace>YunX.Core</RootNamespace>
   </PropertyGroup>
+
+  <!-- 测试与基准工具需要访问 internal 类型（PositionalFile / PwriteStream 等）。
+       用 InternalsVisibleTo 而不是把类型改成 public —— 这些是内部实现细节，
+       不该成为对外契约。 -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>YunX.Smoke</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>DownloadBench</_Parameter1>
+    </AssemblyAttribute>
+    <!-- Desktop 的 cryptoprobe 模式要直接调用 AesGcmCompat 做最小往返 -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>YunX-Desktop</_Parameter1>
+    </AssemblyAttribute>
+    <!-- GitHub 用 TaskCompat.WaitAsync 等 internal 扩展 -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>YunX-GitHub</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <!-- DPAPI：凭证主密钥的「绑定当前 Windows 用户」档 -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
-    <!-- SQLite：任务持久化、解析历史、收藏、凭证表 -->
+  </ItemGroup>
+
+  <!-- net8：Microsoft.Data.Sqlite（自带 SQLitePCLRaw，无需额外原生库管理） -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
+
+  <!-- net48：System.Data.SQLite（官方托管包装，原生 interop 由包自动带入） -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
 </Project>

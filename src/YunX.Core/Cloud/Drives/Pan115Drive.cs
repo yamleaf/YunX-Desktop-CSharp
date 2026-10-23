@@ -55,19 +55,51 @@ public sealed partial class Pan115Drive : ICloudDrive
     private const int ErrnoBusy = 990009;
     private const int ErrnoClientTooOld = 50029;
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _shareIdPatternCache;
+    private static Regex ShareIdPattern() =>
+        _shareIdPatternCache ??= new Regex(@"115(?:cdn|rc)?\.com/s/(sw[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"115(?:cdn|rc)?\.com/s/(sw[A-Za-z0-9]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex ShareIdPattern();
+        private static partial Regex ShareIdPattern();
+    #endif
 
     /// <summary>口令形态：<c>https://115.com/swxxxxxxxx-1234/</c>（中划线后是提取码，没有 /s/）。</summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _commandPatternCache;
+    private static Regex CommandPattern() =>
+        _commandPatternCache ??= new Regex(@"115(?:cdn|rc)?\.com/(sw[A-Za-z0-9]{8,})-([A-Za-z0-9]{4,8})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"115(?:cdn|rc)?\.com/(sw[A-Za-z0-9]{8,})-([A-Za-z0-9]{4,8})",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex CommandPattern();
+            RegexOptions.IgnoreCase)]
+        private static partial Regex CommandPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _pwdInUrlPatternCache;
+    private static Regex PwdInUrlPattern() =>
+        _pwdInUrlPatternCache ??= new Regex(@"[?&]password=([A-Za-z0-9]+)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"[?&]password=([A-Za-z0-9]+)")]
-    private static partial Regex PwdInUrlPattern();
+        private static partial Regex PwdInUrlPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _pathAttrPatternCache;
+    private static Regex PathAttrPattern() =>
+        _pathAttrPatternCache ??= new Regex(@"path=([^;]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"path=([^;]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex PathAttrPattern();
+        private static partial Regex PathAttrPattern();
+    #endif
 
     private readonly HttpClient _client;
     private readonly Func<string?> _cookieProvider;

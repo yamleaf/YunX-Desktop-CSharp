@@ -85,16 +85,16 @@ public sealed class DownloadTuning
     /// <summary>把当前值裁剪到硬范围内（配置被手工改坏时的兜底）。</summary>
     public void ClampToHardLimits()
     {
-        ReadBufferBytes = Math.Clamp(ReadBufferBytes,
+        ReadBufferBytes = Math48.Clamp(ReadBufferBytes,
             ReadBufferHardKb.Min * 1024, ReadBufferHardKb.Max * 1024);
-        PreemptFloorBps = Math.Clamp(PreemptFloorBps,
+        PreemptFloorBps = Math48.Clamp(PreemptFloorBps,
             PreemptFloorHardKbps.Min * 1024, PreemptFloorHardKbps.Max * 1024);
-        PreemptMinAgeMs = Math.Clamp(PreemptMinAgeMs,
+        PreemptMinAgeMs = Math48.Clamp(PreemptMinAgeMs,
             PreemptAgeHardSec.Min * 1000, PreemptAgeHardSec.Max * 1000);
 
         foreach (var key in ThreadsPerPlatform.Keys.ToList())
         {
-            ThreadsPerPlatform[key] = Math.Clamp(ThreadsPerPlatform[key],
+            ThreadsPerPlatform[key] = Math48.Clamp(ThreadsPerPlatform[key],
                 ThreadsHard.Min, ThreadsHard.Max);
         }
     }

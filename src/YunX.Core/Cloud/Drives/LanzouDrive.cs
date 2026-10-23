@@ -43,29 +43,85 @@ public sealed partial class LanzouDrive : ICloudDrive
     private const int MaxFolderPages = 500;
 
     /// <summary>蓝奏域名族：lanzou*、lanzo*、lanzx*，后缀 com/net/org/cn。</summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _lanzouHostPatternCache;
+    private static Regex LanzouHostPattern() =>
+        _lanzouHostPatternCache ??= new Regex(@"^(?:[a-z0-9-]+\.)*(?:lanzou[a-z]?|lan[zs]o[ux]|lanzx[a-z]?)\.(?:com|net|org|cn)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^(?:[a-z0-9-]+\.)*(?:lanzou[a-z]?|lan[zs]o[ux]|lanzx[a-z]?)\.(?:com|net|org|cn)$",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex LanzouHostPattern();
+            RegexOptions.IgnoreCase)]
+        private static partial Regex LanzouHostPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _titlePatternCache;
+    private static Regex TitlePattern() =>
+        _titlePatternCache ??= new Regex(@"<title>([^<]*)</title>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"<title>([^<]*)</title>", RegexOptions.IgnoreCase)]
-    private static partial Regex TitlePattern();
+        private static partial Regex TitlePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _iframePatternCache;
+    private static Regex IframePattern() =>
+        _iframePatternCache ??= new Regex(@"<iframe[^>]+src=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"<iframe[^>]+src=[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
-    private static partial Regex IframePattern();
+        private static partial Regex IframePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _ajaxFilePatternCache;
+    private static Regex AjaxFilePattern() =>
+        _ajaxFilePatternCache ??= new Regex(@"(?:ajaxm|ajaxfile)\.php\?file=(\d+)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"(?:ajaxm|ajaxfile)\.php\?file=(\d+)")]
-    private static partial Regex AjaxFilePattern();
+        private static partial Regex AjaxFilePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _fileInputPatternCache;
+    private static Regex FileInputPattern() =>
+        _fileInputPatternCache ??= new Regex(@"name=[""']file[""']\s+value=[""'](\d+)[""']", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"name=[""']file[""']\s+value=[""'](\d+)[""']")]
-    private static partial Regex FileInputPattern();
+        private static partial Regex FileInputPattern();
+    #endif
 
     /// <summary>单文件分享的展示大小：「文件大小：1.5 M」。</summary>
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _displaySizePatternCache;
+    private static Regex DisplaySizePattern() =>
+        _displaySizePatternCache ??= new Regex(@"(?:文件大小|大小)\s*[:：]\s*([\d.]+)\s*([KMGT]?)(?:i?B)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"(?:文件大小|大小)\s*[:：]\s*([\d.]+)\s*([KMGT]?)(?:i?B)?",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex DisplaySizePattern();
+            RegexOptions.IgnoreCase)]
+        private static partial Regex DisplaySizePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _sizeTokenCache;
+    private static Regex SizeToken() =>
+        _sizeTokenCache ??= new Regex(@"([\d.]+)\s*([KMGT]?)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"([\d.]+)\s*([KMGT]?)", RegexOptions.IgnoreCase)]
-    private static partial Regex SizeToken();
+        private static partial Regex SizeToken();
+    #endif
 
     private readonly HttpClient _client;
     private readonly Func<string?> _cookieProvider;
@@ -118,7 +174,7 @@ public sealed partial class LanzouDrive : ICloudDrive
         {
             AllowAutoRedirect = false,
             UseCookies = false,
-            AutomaticDecompression = DecompressionMethods.All,
+            AutomaticDecompression = Net48Constants.DecompressionAll,
         };
         _ownedHandler = handler;
         _client = new HttpClient(handler, disposeHandler: false)
@@ -739,7 +795,11 @@ public sealed partial class LanzouDrive : ICloudDrive
         if (!Uri.TryCreate(nodeUrl, UriKind.Absolute, out var uri)) return null;
 
         var dataBlocks = Regex.Matches(html, @"data\s*:\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
-            RegexOptions.Singleline).Select(m => m.Groups[1].Value);
+                RegexOptions.Singleline)
+            // net48 的 MatchCollection 只实现 ICollection（非泛型），不能直接 .Select；
+            // Cast<Match>() 后才能用 LINQ（.NET Framework 的这一处历史遗留）。
+            .Cast<Match>()
+            .Select(m => m.Groups[1].Value);
         string? block = dataBlocks.FirstOrDefault(b => b.Contains("'file'") || b.Contains("\"file\""));
 
         string? file = block != null

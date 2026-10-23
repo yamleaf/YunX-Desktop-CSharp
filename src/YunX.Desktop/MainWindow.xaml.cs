@@ -215,7 +215,7 @@ public partial class MainWindow : Window
         bool running = Vm.RunningCount > 0;
         if (running)
         {
-            _taskbar.SetProgress(Math.Clamp(Vm.TotalPercent / 100.0, 0, 1));
+            _taskbar.SetProgress(Math48.Clamp(Vm.TotalPercent / 100.0, 0, 1));
 
             // 有任务在跑就阻止系统睡眠；只阻睡眠、允许关屏，否则用户合盖都合不上。
             //

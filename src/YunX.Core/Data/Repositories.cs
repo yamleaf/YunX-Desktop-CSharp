@@ -1,4 +1,6 @@
-﻿using Microsoft.Data.Sqlite;
+#if !NET48
+using Microsoft.Data.Sqlite;
+#endif
 
 namespace YunX.Core.Data;
 
@@ -767,6 +769,18 @@ public sealed class CredentialRepository
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM credential WHERE platform=$p";
         cmd.Parameters.AddWithValue("$p", platform);
+        cmd.ExecuteNonQuery();
+    });
+
+    /// <summary>
+    /// 清空全部凭证。只在「主密钥已重建」后用 ——
+    /// 那时表里每条密文都用旧密钥加密，一律解不开，留着只会让每个平台
+    /// 读取时各返回一次 null，用户看到的是一堆「未登录」却不知道为什么。
+    /// </summary>
+    public void ClearAll() => _db.Execute(conn =>
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM credential";
         cmd.ExecuteNonQuery();
     });
 }

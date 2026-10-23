@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Linq;
 // Copyright (C) 2026 Lyaco
 //
@@ -229,7 +229,7 @@ public sealed class GitHubApiClient
         // /repos/{owner}/{repo}[...]
         const string prefix = "/repos/";
         if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
-        var seg = path[prefix.Length..].Split('/', 3);
+        var seg = path[prefix.Length..].Split(new[] { '/' }, 3);
         if (seg.Length < 2 || seg[0].Length == 0 || seg[1].Length == 0) return false;
         owner = seg[0];
         repo = seg[1];
@@ -305,7 +305,7 @@ public sealed class GitHubApiClient
                     NoteStatusCode((int)resp.StatusCode);
 
                     if (resp.StatusCode == HttpStatusCode.OK)
-                        return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        return await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                     if (resp.StatusCode is HttpStatusCode.Unauthorized)
                     {
@@ -327,10 +327,16 @@ public sealed class GitHubApiClient
                         return null;
                     }
 
+#if NET48
+                    // net48 的 HttpStatusCode 枚举没有 TooManyRequests 具名成员，用数值 429
+                    if (resp.StatusCode is HttpStatusCode.Forbidden
+                        || (int)resp.StatusCode == 429)
+#else
                     if (resp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
+#endif
                     {
                         ReadRateLimit(resp);
-                        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        var body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                         // 说清"为什么失败、怎么恢复"，而不是只丢一句 rate limit exceeded
                         if (RateLimit is { Remaining: 0 } rl && rl.ResetAt is { } reset)
                             Log?.Invoke($"GitHub API 配额已用完（{rl.Limit}/小时，" +
@@ -394,7 +400,7 @@ public sealed class GitHubApiClient
 
                 using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
                 if (resp.StatusCode == HttpStatusCode.OK)
-                    return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    return await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (resp.StatusCode == HttpStatusCode.NotFound) return null;
             }
             catch
@@ -415,7 +421,7 @@ public sealed class GitHubApiClient
         const string prefix = "https://raw.githubusercontent.com/";
         if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
 
-        var seg = url[prefix.Length..].Split('/', 3);
+        var seg = url[prefix.Length..].Split(new[] { '/' }, 3);
         if (seg.Length < 2) return false;
         return _repoPrivate.TryGetValue($"{seg[0]}/{seg[1]}", out bool priv) && priv;
     }

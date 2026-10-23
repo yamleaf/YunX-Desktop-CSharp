@@ -2,10 +2,16 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>12</LangVersion>
+    <!--
+      多目标：断言必须在**两个框架**上都能跑。
+      只在 net8 跑是不够的 —— net48 的下载引擎走的是完全不同的写入路径
+      （PwriteStream / WriteFile + OVERLAPPED / BCrypt / System.Data.SQLite），
+      「net8 全过」不能证明 net48 的分片定位写没写错偏移。
+
+      断言全部用本地 TcpListener 模拟 HTTP 服务，不依赖外网，
+      所以 net48 上跑一遍的成本只有几十秒。
+    -->
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
     <RootNamespace>YunX.Smoke</RootNamespace>
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
@@ -14,5 +20,15 @@
     <ProjectReference Include="..\YunX.Core\YunX.Core.csproj" />
     <ProjectReference Include="..\YunX.GitHub\YunX.GitHub.csproj" />
   </ItemGroup>
+
+  <!--
+    net48 的默认 RID 是 win7-x86（.NET Framework 默认 32 位），
+    与 Directory.Build.targets 里设的 PlatformTarget=x64 冲突（NETSDK1032）。
+    RuntimeIdentifierInference 在 targets 之前跑，所以只能在这里显式钉死。
+    理由同 YunX.Desktop.csproj。
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <RuntimeIdentifier>win7-x64</RuntimeIdentifier>
+  </PropertyGroup>
 
 </Project>

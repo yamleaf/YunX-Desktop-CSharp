@@ -94,8 +94,16 @@ public sealed partial class BaiduDrive : ICloudDrive
         };
     }
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _surlPatternCache;
+    private static Regex SurlPattern() =>
+        _surlPatternCache ??= new Regex(@"/s/([A-Za-z0-9_\-]{4,32})", RegexOptions.Compiled);
+    #else
     [System.Text.RegularExpressions.GeneratedRegex(@"/s/([A-Za-z0-9_\-]{4,32})")]
-    private static partial System.Text.RegularExpressions.Regex SurlPattern();
+        private static partial System.Text.RegularExpressions.Regex SurlPattern();
+    #endif
 
     // ================= 列目录 =================
 

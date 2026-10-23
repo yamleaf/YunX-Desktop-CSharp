@@ -6,6 +6,12 @@ using System.Text.Json;
 
 namespace YunX.Core.Download;
 
+
+#if NET48
+using NetHandler = System.Net.Http.HttpClientHandler;
+#else
+using NetHandler = System.Net.Http.SocketsHttpHandler;
+#endif
 /// <summary>
 /// Gopeed 引擎子进程的生命周期与 REST API 客户端。
 ///
@@ -39,10 +45,12 @@ public sealed class GopeedEngine : IDisposable
         _engineDir = engineDir;
 
         // 关键：绕过系统代理。本地回环请求一旦被代理接管就是超时。
-        var handler = new SocketsHttpHandler
+        var handler = new NetHandler
         {
             UseProxy = false,
+#if !NET48
             ConnectTimeout = TimeSpan.FromSeconds(5),
+#endif
         };
 
         _local = new HttpClient(handler, disposeHandler: true)
@@ -106,12 +114,20 @@ public sealed class GopeedEngine : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+#if NET48
+        // net48 只有字符串形式的 Arguments，需要按 Windows 命令行规则手工转义。
+        psi.Arguments = Process48.BuildArgumentString(new[]
+        {
+            "-A", "127.0.0.1", "-P", port.ToString(), "-d", StorageDir,
+        });
+#else
         psi.ArgumentList.Add("-A");
         psi.ArgumentList.Add("127.0.0.1");
         psi.ArgumentList.Add("-P");
         psi.ArgumentList.Add(port.ToString());
         psi.ArgumentList.Add("-d");
         psi.ArgumentList.Add(StorageDir);
+#endif
 
         // stdout/stderr 必须消费掉：不读管道会写满缓冲区把子进程阻塞住
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -179,7 +195,7 @@ public sealed class GopeedEngine : IDisposable
         }
 
         // 超时：清掉进程，避免留下半死状态
-        try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+        try { if (!process.HasExited) Process48.KillTree(process); } catch { }
         _process = null;
         _port = 0;
         logWriter.Dispose();
@@ -203,7 +219,7 @@ public sealed class GopeedEngine : IDisposable
                 // 先礼后兵：Gopeed 对 SIGTERM 不敏感，但正常结束能让它刷盘
                 try { p.CloseMainWindow(); } catch { }
                 if (!p.WaitForExit(2000))
-                    p.Kill(entireProcessTree: true);
+                    Process48.KillTree(p);
             }
         }
         catch { /* 退出路径上不能再抛 */ }
@@ -368,7 +384,7 @@ public sealed class GopeedEngine : IDisposable
                     string? path = p.MainModule?.FileName;
                     if (path != null && path.Contains("gopeed", StringComparison.OrdinalIgnoreCase))
                     {
-                        p.Kill(entireProcessTree: true);
+                        Process48.KillTree(p);
                         p.WaitForExit(1500);
                         log?.Invoke("已清理上一次残留的 Gopeed 进程");
                     }

@@ -91,7 +91,7 @@ public sealed class MirrorProbe
     {
         _client = client;
         _timeout = timeout ?? TimeSpan.FromSeconds(8);
-        _budget = Math.Clamp(budgetBytes ?? BudgetBytes, 16 * 1024, BudgetBytes);
+        _budget = Math48.Clamp(budgetBytes ?? BudgetBytes, 16 * 1024, BudgetBytes);
     }
 
     public async Task<ProbeResult> ProbeAsync(Mirror mirror, string url,
@@ -143,7 +143,11 @@ public sealed class MirrorProbe
                 };
             }
 
+#if NET48
+            using var stream = await resp.Content.ReadAsStreamAsync(linked.Token)
+#else
             await using var stream = await resp.Content.ReadAsStreamAsync(linked.Token)
+#endif
                 .ConfigureAwait(false);
 
             var buffer = new byte[FirstChunk];

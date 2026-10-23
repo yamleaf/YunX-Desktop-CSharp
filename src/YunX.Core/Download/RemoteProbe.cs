@@ -117,8 +117,15 @@ public sealed class RemoteProbe
                         total = resp.Content.Headers.ContentLength ?? 0;
                         rangeOk = false;
                     }
+#if NET48
+                    // net48 的 HttpStatusCode 枚举里没有 TooManyRequests 这个具名成员
+                    // （.NET Framework 4.8 的枚举停在 511 之前的旧集合），用数值比较。
+                    else if ((int)resp.StatusCode == 429
+                             || resp.StatusCode == HttpStatusCode.ServiceUnavailable)
+#else
                     else if (resp.StatusCode is HttpStatusCode.TooManyRequests
                              or HttpStatusCode.ServiceUnavailable)
+#endif
                     {
                         // 记下最长的 Retry-After，本轮结束后统一睡
                         rateLimited = true;

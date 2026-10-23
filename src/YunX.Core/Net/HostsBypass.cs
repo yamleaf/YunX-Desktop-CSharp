@@ -80,14 +80,25 @@ public static class HostsBypass
                     string.Join("、", hijacked.Select(h => h.Host)));
 
         var map = new Dictionary<string, IPAddress>(StringComparer.OrdinalIgnoreCase);
+#if NET48
+        // net48 的 HttpClientHandler 没有 ConnectTimeout，超时由 HttpClient.Timeout 统管。
+        using var doh = new HttpClient(new System.Net.Http.HttpClientHandler
+        {
+            // DoH 必须直连：走系统代理会再次撞上被污染的 hosts
+            UseProxy = false,
+            AutomaticDecompression = Net48Constants.DecompressionAll,
+        })
+        { Timeout = TimeSpan.FromSeconds(6) };
+#else
         using var doh = new HttpClient(new SocketsHttpHandler
         {
             ConnectTimeout = TimeSpan.FromSeconds(5),
             // DoH 必须直连：走系统代理会再次撞上被污染的 hosts
             UseProxy = false,
-            AutomaticDecompression = DecompressionMethods.All,
+            AutomaticDecompression = Net48Constants.DecompressionAll,
         })
         { Timeout = TimeSpan.FromSeconds(6) };
+#endif
 
         foreach (var (host, _) in hijacked)
         {

@@ -298,7 +298,7 @@ public static class LogRedactor
 
         // 有的直链把签名放在 path 里：只保留前两段
         var segs = u.AbsolutePath.Trim('/').Split('/');
-        string path = segs.Length <= 2 ? u.AbsolutePath : "/" + string.Join('/', segs.Take(2)) + "/…";
+        string path = segs.Length <= 2 ? u.AbsolutePath : "/" + string.Join("/", segs.Take(2)) + "/…";
 
         return $"{u.Scheme}://{u.Host}{(u.IsDefaultPort ? "" : ":" + u.Port)}{path}";
     }

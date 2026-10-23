@@ -58,31 +58,33 @@ public static class AuthBackup
         byte[] json = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
 
         // 2) 用口令派生密钥加密
-        byte[] salt = RandomNumberGenerator.GetBytes(SaltSize);
-        byte[] key = Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt,
+        byte[] salt = Rng48.GetBytes(SaltSize);
+        byte[] key = Pbkdf2_48.Derive(Encoding.UTF8.GetBytes(password), salt,
             Iterations, HashAlgorithmName.SHA256, KeySize);
-        byte[] nonce = RandomNumberGenerator.GetBytes(NonceSize);
+        byte[] nonce = Rng48.GetBytes(NonceSize);
 
         byte[] cipherText = new byte[json.Length];
         byte[] tag = new byte[TagSize];
-        using (var gcm = new AesGcm(key, TagSize))
+        using (var gcm = new AesGcmCompat(key, TagSize))
         {
             gcm.Encrypt(nonce, json, cipherText, tag);
         }
 
         // 3) 组装文件
         using var ms = new MemoryStream();
-        ms.Write(Magic);
+        ms.Write(Magic, 0, Magic.Length);
         ms.WriteByte(Version);
-        ms.Write(BitConverter.GetBytes(Iterations));
-        ms.Write(salt);
-        ms.Write(nonce);
-        ms.Write(tag);
-        ms.Write(cipherText);
+        // net48 的 MemoryStream 没有 Write(byte[]) 单参数重载，只有 Write(byte[],int,int)
+        byte[] iterBytes = BitConverter.GetBytes(Iterations);
+        ms.Write(iterBytes, 0, iterBytes.Length);
+        ms.Write(salt, 0, salt.Length);
+        ms.Write(nonce, 0, nonce.Length);
+        ms.Write(tag, 0, tag.Length);
+        ms.Write(cipherText, 0, cipherText.Length);
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllBytes(outputPath, ms.ToArray());
-        CryptographicOperations.ZeroMemory(key);
+        Crypto48.ZeroMemory(key);
         return outputPath;
     }
 
@@ -115,12 +117,12 @@ public static class AuthBackup
         offset += TagSize;
         byte[] cipherText = data.AsSpan(offset).ToArray();
 
-        byte[] key = Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt,
+        byte[] key = Pbkdf2_48.Derive(Encoding.UTF8.GetBytes(password), salt,
             iterations, HashAlgorithmName.SHA256, KeySize);
         byte[] plain = new byte[cipherText.Length];
         try
         {
-            using var gcm = new AesGcm(key, TagSize);
+            using var gcm = new AesGcmCompat(key, TagSize);
             gcm.Decrypt(nonce, cipherText, tag, plain);
         }
         catch (CryptographicException)
@@ -130,7 +132,7 @@ public static class AuthBackup
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(key);
+            Crypto48.ZeroMemory(key);
         }
 
         var payload = JsonSerializer.Deserialize<Payload>(Encoding.UTF8.GetString(plain));

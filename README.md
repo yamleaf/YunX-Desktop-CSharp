@@ -93,7 +93,7 @@ later version.
 
 ## 界面
 
-> 发布说明见 [`docs/RELEASE-NOTES-v1.3.0.md`](docs/RELEASE-NOTES-v1.3.0.md)
+> 发布说明见 [`docs/RELEASE-NOTES-v1.4.0.md`](docs/RELEASE-NOTES-v1.4.0.md)
 > （含本版新增内容、下载文件清单与 SHA-256 校验值）。
 > 历史版本：[v1.1.0](docs/RELEASE-NOTES-v1.1.0.md) · [v1.0.0](docs/RELEASE-NOTES-v1.0.0.md)。
 
@@ -238,7 +238,75 @@ speed = steadyBytes / steadySpan;
 | 区间级断点 | `IntervalSet` 记录已完成字节区间并自动合并，乱序完成也能精确续传 |
 | 目录穿越防护 | 原版 `safe_filename` 只替换非法字符，本实现额外拒绝 `..`/绝对路径/盘符并二次校验包含关系 |
 | 原子元数据 | 临时文件 + `File.Move(overwrite)`，掉电不会留下半截 JSON |
-| 单文件自包含 | `PublishSingleFile` + `SelfContained`，目标机不需要装 .NET 运行时 |
+| 双目标框架 | `net48`（3.7 MB，默认）与 `net8.0-windows`（70 MB 自包含）并存，见下节 |
+
+---
+
+## 体积与运行时
+
+同一份源码编译出两个目标，按发布渠道任选：
+
+| 目标 | 产物 | 目标机要求 | 适用 |
+|---|---|---|---|
+| `net48` | `YunX-Desktop.exe` **3.7 MB** | Win10 1903+ / Win11 **自带** .NET Framework 4.8 | **默认构建**，推荐 |
+| `net8.0-windows` | `YunX-Desktop.exe` **70.2 MB** | 无（自包含单文件） | 需要 Win7/8 等老系统时 |
+
+net48 版用 Costura.Fody 把全部托管依赖（System.Text.Json、SQLite、
+WebView2 托管层…）内嵌进 exe，发布目录**只剩 exe + LICENSE**：
+
+```
+publish\net48\
+├── YunX-Desktop.exe    3.7 MB
+└── LICENSE
+```
+
+SQLite 的两个文件（托管 dll + 原生 interop）不能走 Costura —— 它内部按
+`Assembly.Location` 拼路径、原生库按 `<程序集目录>\x64\` 直接 `LoadLibrary`。
+所以这两者作为嵌入资源打进 exe，启动最早期由 `NativeBootstrapper` 解压到
+`%LOCALAPPDATA%\YunX-Desktop-CS\native\<内容指纹>\` 再从磁盘加载。
+
+```bat
+:: 默认就是 net48（3.7 MB）
+build.bat
+
+:: net8 版（70 MB，自包含单文件）
+build.bat net8
+```
+
+### net48 版的能力差异
+
+**功能与 net8 版完全一致**，包括 hosts 覆盖 / DoH 绕过（用「URI 换 IP + 补 Host 头 +
+按原域名校验证书」实现，效果等价）。唯一限制是 HTTP/2：
+
+| 能力 | net8 | net48 |
+|---|---|---|
+| hosts 覆盖 / DoH 绕过 | ✅ | ✅（实现方式不同，效果等价） |
+| HTTP/2 | ✅（默认关） | ❌ 最高 1.1 |
+| 其余全部功能 | ✅ | ✅ |
+
+HTTP/2 在本项目里默认就是关闭的（部分镜像的 H2 实现有问题），所以实际无差异。
+
+### 性能
+
+`tools/DownloadBench` 是双目标的基准工具，同一份场景代码在两个框架各跑一遍：
+
+```bash
+dotnet run --project tools/DownloadBench -f net48 -c Release
+dotnet run --project tools/DownloadBench -f net8.0-windows -c Release
+```
+
+实测（3 轮取中位，同一台机器）：
+
+| 场景 | net8 | net48 |
+|---|---|---|
+| 慢速宽带 8MB / 8 线程 | 5.28 MB/s | **6.98 MB/s** |
+| 本地回环 16MB / 8 线程 | 29.55 MB/s | **173.68 MB/s** |
+| 32 线程 × 256KB + 分片校验 | 28.1 MB/s | **125.0 MB/s** |
+
+**net48 不慢于 net8**：真实带宽场景下快约 30%。底层 IO/HTTP 能力两边都在
+350–3200 MB/s 量级，远超真实网络需求（详见 [`docs/SIZE-OPTIMIZATION.md`](docs/SIZE-OPTIMIZATION.md) 第 5.4 节）。
+完整分析见同一文档。
+
 
 ---
 
@@ -282,12 +350,14 @@ Core 与 GitHub 层完全不含 UI 依赖，便于将来接网盘或换 UI 框�
 
 ### 一键编译（推荐）
 
-需要 .NET 8 SDK。双击 `build.bat`，或在命令行：
+需要 .NET 8 SDK（编译 net48 目标也用它）。双击 `build.bat`，或在命令行：
 
 ```bat
-build.bat            :: 编译 Release 并发布单文件到 publish\
-build.bat debug      :: 只编译 Debug（改代码后快速验证）
-build.bat test       :: 编译 + 跑全部离线断言
+build.bat            :: ★默认★ 编译 net48 并发布到 publish\net48\
+build.bat net8       :: 编译 net8 自包含版到 publish\net8\
+build.bat test       :: 编译 + 跑全部离线断言（默认 net48）
+build.bat test net8  :: net8 + 断言
+build.bat debug      :: 只编译 Debug（改代码后快速验证，默认 net48）
 build.bat clean      :: 清理所有 bin / obj / publish
 ```
 
@@ -295,17 +365,23 @@ build.bat clean      :: 清理所有 bin / obj / publish
 并在发布前检查程序是否正在运行 —— 强行覆盖会得到一个晦涩的
 `MSB4018: GenerateBundle 意外失败`，脚本会直接告诉你是"请先关闭程序"。
 
-产物：`publish\YunX-Desktop.exe`（约 70 MB，自包含单文件，目标机无需 .NET）
-+ `publish\LICENSE`。
+产物：`publish\net48\YunX-Desktop.exe`（3.7 MB 单文件）+ `LICENSE`。
+**没有 `.exe.config`** —— 那个文件里的 `supportedRuntime` 与
+`bindingRedirect` 实测都不需要（CLR 按程序集元数据里的
+`TargetFrameworkAttribute` 选运行时；Unsafe 已被 Costura 内嵌，没有第二个副本）。
+发布目录若冒出额外 dll，脚本会黄字警告（通常意味着 Costura 没织入）。
 
 ### 手动构建
 
 ```powershell
-# 开发运行
-dotnet run --project src/YunX.Desktop
+# 开发运行（默认 net48 目标 —— 与发布形态一致）
+dotnet run --project src/YunX.Desktop -f net48
 
-# 自包含单文件发布（目标机无需 .NET）
-dotnet publish src/YunX.Desktop -c Release -o publish
+# net48 版（3.7 MB，目标机需自带 .NET Framework 4.8 —— Win10 1903+/Win11 默认满足）
+dotnet publish src/YunX.Desktop -f net48 -c Release -o publish\net48
+
+# net8 版（70 MB，自包含单文件，目标机无需任何运行时）
+dotnet publish src/YunX.Desktop -f net8.0-windows -c Release -o publish\net8
 ```
 
 ### 重新生成图标

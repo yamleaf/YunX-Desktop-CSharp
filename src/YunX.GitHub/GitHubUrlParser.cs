@@ -15,11 +15,27 @@ namespace YunX.GitHub;
 /// </summary>
 public static partial class GitHubUrlParser
 {
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _shortFormCache;
+    private static Regex ShortForm() =>
+        _shortFormCache ??= new Regex(@"^([A-Za-z0-9](?:[A-Za-z0-9\-]{0,38}))/([A-Za-z0-9._\-]{1,100})$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^([A-Za-z0-9](?:[A-Za-z0-9\-]{0,38}))/([A-Za-z0-9._\-]{1,100})$")]
-    private static partial Regex ShortForm();
+        private static partial Regex ShortForm();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _dotGitSuffixCache;
+    private static Regex DotGitSuffix() =>
+        _dotGitSuffixCache ??= new Regex(@"^(https://github\.com/[^/]{1,40}/[^/]{1,100})\.git(/?)$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^(https://github\.com/[^/]{1,40}/[^/]{1,100})\.git(/?)$")]
-    private static partial Regex DotGitSuffix();
+        private static partial Regex DotGitSuffix();
+    #endif
 
     private static readonly string[] GitHubHosts =
     {
@@ -56,7 +72,7 @@ public static partial class GitHubUrlParser
 
         string host = uri.Host.ToLowerInvariant();
         string rest = uri.AbsolutePath.Trim('/');
-        var segs = rest.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var segs = rest.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
 
         // 2) raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
         if (host is "raw.githubusercontent.com" or "raw.gitmirror.com" or "raw.gitmirror.xyz")
@@ -64,7 +80,7 @@ public static partial class GitHubUrlParser
             if (segs.Length >= 4)
             {
                 string o = segs[0], r = segs[1], rf = segs[2];
-                string path = string.Join('/', segs.Skip(3));
+                string path = string.Join("/", segs.Skip(3));
                 return new GitHubTarget
                 {
                     Kind = TargetKind.File, Owner = o, Repo = r, Ref = rf, Path = path,
@@ -80,7 +96,7 @@ public static partial class GitHubUrlParser
         {
             if (segs.Length >= 5 && segs[2] is "zip" or "tar.gz")
             {
-                string rf = StripRefs(string.Join('/', segs.Skip(4)));
+                string rf = StripRefs(string.Join("/", segs.Skip(4)));
                 string ext = segs[2];
                 return new GitHubTarget
                 {
@@ -155,13 +171,13 @@ public static partial class GitHubUrlParser
                 return new GitHubTarget
                 {
                     Kind = TargetKind.Releases, Owner = owner, Repo = repo,
-                    Tag = StripRefs(string.Join('/', sub.Skip(1))), RawInput = raw,
+                    Tag = StripRefs(string.Join("/", sub.Skip(1))), RawInput = raw,
                 };
             }
             if (sub.Count >= 3 && sub[0].Equals("download", StringComparison.OrdinalIgnoreCase))
             {
                 string tag = sub[1];
-                string asset = string.Join('/', sub.Skip(2));
+                string asset = string.Join("/", sub.Skip(2));
                 return new GitHubTarget
                 {
                     Kind = TargetKind.Asset, Owner = owner, Repo = repo, Tag = tag,
@@ -189,11 +205,11 @@ public static partial class GitHubUrlParser
         // ---- archive/refs/heads|tags/<ref>.zip ----
         if (head == "archive" && tail.Count >= 2)
         {
-            string all = string.Join('/', tail);
+            string all = string.Join("/", tail);
             string fmt = all.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? "tar.gz" : "zip";
             string refPart = Regex.Replace(all, @"\.(zip|tar\.gz)$", "",
                 RegexOptions.IgnoreCase);
-            refPart = string.Join('/', refPart.Split('/').Skip(1));
+            refPart = string.Join("/", refPart.Split('/').Skip(1));
             string rf = StripRefs(refPart);
             return new GitHubTarget
             {
@@ -205,7 +221,7 @@ public static partial class GitHubUrlParser
         // ---- blob / raw / tree / blame ----
         if (head is "blob" or "raw" or "tree" or "blame")
         {
-            var (rf, path) = SplitRefPath(string.Join('/', tail.Skip(1)));
+            var (rf, path) = SplitRefPath(string.Join("/", tail.Skip(1)));
 
             if (head == "tree")
             {
@@ -273,7 +289,7 @@ public static partial class GitHubUrlParser
         if (rest.Length == 0) return (null, null);
         var parts = rest.Split('/');
         if (parts.Length == 1) return (parts[0], null);
-        return (parts[0], string.Join('/', parts.Skip(1)));
+        return (parts[0], string.Join("/", parts.Skip(1)));
     }
 
     /// <summary>构造仓库归档直链。</summary>

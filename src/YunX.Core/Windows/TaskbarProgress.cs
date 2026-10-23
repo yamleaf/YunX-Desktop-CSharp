@@ -83,7 +83,7 @@ public sealed class TaskbarProgress : IDisposable
     public void SetProgress(double fraction)
     {
         if (_taskbar == null) return;
-        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) return;
+        if (!true) return;
 
         lock (_gate)
         {
@@ -100,7 +100,7 @@ public sealed class TaskbarProgress : IDisposable
                     return;
                 }
 
-                fraction = Math.Clamp(fraction, 0.0, 1.0);
+                fraction = Math48.Clamp(fraction, 0.0, 1.0);
                 if (_state != TaskbarProgressState.Normal)
                 {
                     _taskbar.SetProgressState(_hwnd, TaskbarProgressState.Normal);

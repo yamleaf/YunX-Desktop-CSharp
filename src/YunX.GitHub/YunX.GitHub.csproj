@@ -1,10 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>12</LangVersion>
+    <!-- 多目标必须写在这里，理由见 YunX.Core.csproj 的注释 -->
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
     <RootNamespace>YunX.GitHub</RootNamespace>
   </PropertyGroup>
 

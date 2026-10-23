@@ -4,6 +4,29 @@ using YunX.Core.Util;
 
 namespace YunX.Core.Net;
 
+
+
+/// <summary>
+/// HTTP 连接处理器的框架别名。
+///
+/// <list type="bullet">
+/// <item>net8 → <see cref="SocketsHttpHandler"/>：支持 ConnectCallback（hosts 覆盖 / DoH 绕过）、
+///       HTTP/2、ConnectTimeout、PooledConnectionLifetime。</item>
+/// <item>net48 → <see cref="HttpClientHandler"/>：.NET Framework 唯一的托管实现，
+///       最高 HTTP/1.1，**没有** ConnectCallback。</item>
+/// </list>
+///
+/// <para><b>net48 的能力损失（已在文档中标注）</b>：
+/// hosts 覆盖与 DoH 绕过依赖 ConnectCallback，在 net48 上不可用。
+/// GitHub 下载主流程不受影响（走正常 DNS 或镜像）；受影响的是
+/// 「本机 hosts 把 github.com 指向 127.0.0.1」这类场景 —— 那种情况下 net48 版会连不通，
+/// 需要用户改用镜像线路。这是为了 5MB 体积付出的可接受代价。</para>
+/// </summary>
+#if NET48
+using NetHandler = System.Net.Http.HttpClientHandler;
+#else
+using NetHandler = System.Net.Http.SocketsHttpHandler;
+#endif
 /// <summary>联网模式。</summary>
 public enum NetworkMode
 {
@@ -55,7 +78,7 @@ public sealed class HttpClientProvider : IDisposable
     /// 而普通 API 请求需要自动解压，两者不能共用同一个 handler。</para>
     /// </summary>
     private readonly Dictionary<(NetworkMode Mode, bool ForDownload, bool AllowRedirect, bool Http2),
-        SocketsHttpHandler> _handlers = new();
+        NetHandler> _handlers = new();
 
     private bool _disposed;
 
@@ -205,12 +228,19 @@ public sealed class HttpClientProvider : IDisposable
         //     · 关 → 明确用 1.1，不尝试升级。
         //   注意：版本策略是**客户端级**的，所以 handler 的缓存 key 也要带上这个维度，
         //   否则改了开关却命中旧 handler，行为不会变。
+#if NET48
+        // .NET Framework 的 HttpClient 最高 HTTP/1.1，没有 DefaultRequestVersion /
+        // DefaultVersionPolicy 这两个属性。net48 版固定走 1.1
+        // （本项目默认就关 HTTP/2，所以实际行为一致）。
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Connection", "keep-alive");
+#else
         client.DefaultRequestVersion = EnableHttp2
             ? HttpVersion.Version20
             : HttpVersion.Version11;
         client.DefaultVersionPolicy = EnableHttp2
             ? HttpVersionPolicy.RequestVersionOrLower
             : HttpVersionPolicy.RequestVersionExact;
+#endif
 
         client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
         client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
@@ -220,7 +250,7 @@ public sealed class HttpClientProvider : IDisposable
     }
 
     /// <summary>取（或首次创建）某个 (模式, 下载标志) 对应的共享 handler。</summary>
-    private SocketsHttpHandler GetOrCreateHandler(NetworkMode mode, bool forDownload,
+    private NetHandler GetOrCreateHandler(NetworkMode mode, bool forDownload,
         bool allowRedirect)
     {
         // HTTP/2 是 handler 级开关，必须进 key：否则开了开关却命中旧的 HTTP/1.1 handler，
@@ -229,28 +259,55 @@ public sealed class HttpClientProvider : IDisposable
 
         lock (_gate)
         {
+#if NET48
+            CompatGuard.ThrowIfDisposed(_disposed, this);
+#else
             ObjectDisposedException.ThrowIf(_disposed, this);
+#endif
 
             if (_handlers.TryGetValue(key, out var existing)) return existing;
 
-            var created = new SocketsHttpHandler
+            var created = new NetHandler
             {
                 UseProxy = mode == NetworkMode.Proxy,
+#if !NET48
                 ConnectTimeout = TimeSpan.FromSeconds(15),
                 PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+#endif
+#if NET48
+                // 必须关掉 HttpClientHandler 的内置 Cookie 容器。
+                //
+                // UseCookies 默认 true，此时 handler 会**接管** Cookie 头：
+                // 我们自己通过 request.Headers 设的 Cookie 会被忽略（或被合并掉），
+                // 表现为「网盘直链的鉴权 Cookie 发不出去，服务端返回未登录」。
+                // net8 的 SocketsHttpHandler 没有这个开关（默认就不接管），
+                // 所以只有 net48 需要显式关。
+                UseCookies = false,
+#endif
                 MaxConnectionsPerServer = 64,
                 // 关键：不解压。Range 是按**压缩前**的字节算偏移的，
                 // 一旦让 HttpClient 自动解压，写入位置就全错了。
                 AutomaticDecompression = forDownload
                     ? DecompressionMethods.None
-                    : DecompressionMethods.All,
+                    : Net48Constants.DecompressionAll,
                 // 关键：三层重定向都跟随（镜像常 302 到 CDN）。
                 // 蓝奏那一路要逐跳校验域名，因此单独用 allowRedirect=false 的 handler。
                 AllowAutoRedirect = allowRedirect,
                 MaxAutomaticRedirections = 10,
-                // 每次建连都重新查 Overrides，因此 hosts 覆盖在运行中更新也能生效
+#if !NET48
+                // net48 的 HttpClientHandler 没有 ConnectCallback，
+                // 改用 HostsRewrite48（URI 换 IP + 补 Host 头）实现同样的效果。
                 ConnectCallback = BuildConnectCallback(),
+#endif
             };
+
+#if NET48
+            // hosts 覆盖后请求 URI 的 host 会变成 IP，系统默认的证书校验必然报
+            // 「域名不匹配」。这里改为按「请求原本的域名」校验 CN/SAN ——
+            // 安全性不降低（仍要求有效证书 + 域名匹配），只是绕开本机 hosts 的解析劫持。
+            HostsOverride48.AttachCertificateCheck(created,
+                () => HostsRewrite48.CurrentOriginalHost ?? "");
+#endif
 
             // HTTP 版本协商由 HttpClient 的 DefaultVersionPolicy 决定，而 handler 这边
             // 能控制的是"是否允许 H2 的明文升级/多路复用"。这里通过 ConnectCallback
@@ -270,14 +327,22 @@ public sealed class HttpClientProvider : IDisposable
     /// </summary>
     private static HttpClient BuildEphemeralClient(NetworkMode mode, TimeSpan timeout)
     {
-        var handler = new SocketsHttpHandler
+        var handler = new NetHandler
         {
             UseProxy = mode == NetworkMode.Proxy,
+#if !NET48
             ConnectTimeout = TimeSpan.FromSeconds(8),
-            AutomaticDecompression = DecompressionMethods.All,
+#endif
+#if NET48
+            // 同 GetOrCreateHandler：不接管 Cookie，让调用方的 Cookie 头原样发出
+            UseCookies = false,
+#endif
+            AutomaticDecompression = Net48Constants.DecompressionAll,
             AllowAutoRedirect = true,
             MaxAutomaticRedirections = 10,
+#if !NET48
             ConnectCallback = BuildConnectCallback(),
+#endif
         };
 
         var client = new HttpClient(handler) { Timeout = timeout };
@@ -290,6 +355,7 @@ public sealed class HttpClientProvider : IDisposable
     /// 构造 ConnectCallback：命中 hosts 覆盖表时直接连真实 IP，否则走系统 DNS。
     /// 这是绕过 hosts 劫持的落点，且**只影响本客户端**，无进程级全局副作用。
     /// </summary>
+#if !NET48
     private static Func<SocketsHttpConnectionContext, CancellationToken, ValueTask<Stream>>
         BuildConnectCallback()
     {
@@ -330,10 +396,11 @@ public sealed class HttpClientProvider : IDisposable
             }
         };
     }
+#endif
 
     public void Dispose()
     {
-        List<SocketsHttpHandler> toDispose;
+        List<NetHandler> toDispose;
 
         lock (_gate)
         {

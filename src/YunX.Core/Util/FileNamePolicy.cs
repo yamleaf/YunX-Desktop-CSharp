@@ -86,7 +86,7 @@ public static class FileNamePolicy
 
         // 最多 8 层：防止恶意构造的超深路径触达系统路径长度上限
         if (segments.Count > 8) segments = segments.Take(8).ToList();
-        return string.Join('/', segments);
+        return string.Join("/", segments);
     }
 
     /// <summary>
@@ -186,10 +186,14 @@ public static class FileNamePolicy
     /// <summary>计算文件的 SHA-256（十六进制）。校验用。</summary>
     public static async Task<string> Sha256Async(string path, CancellationToken ct = default)
     {
+#if NET48
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+#else
         await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+#endif
             1 << 20, FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var sha = SHA256.Create();
-        byte[] hash = await sha.ComputeHashAsync(fs, ct).ConfigureAwait(false);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        byte[] hash = await HashCompat.ComputeHashAsync(sha, fs, ct).ConfigureAwait(false);
+        return Helpers.ToHexString(hash).ToLowerInvariant();
     }
 }

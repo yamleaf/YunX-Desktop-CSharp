@@ -38,7 +38,7 @@ public sealed class GopeedProvisioner
     public sealed record Progress(Stage Stage, long Downloaded, long Total, string Message)
     {
         public double Percent => Total > 0
-            ? Math.Clamp(Downloaded * 100.0 / Total, 0, 100)
+            ? Math48.Clamp(Downloaded * 100.0 / Total, 0, 100)
             : 0;
     }
 
@@ -60,7 +60,15 @@ public sealed class GopeedProvisioner
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
 
+        #if NET48
+        using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        #else
+#if NET48
+        using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+#else
         await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+#endif
+        #endif
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
             .ConfigureAwait(false);
 
@@ -164,9 +172,17 @@ public sealed class GopeedProvisioner
 
                 long total = resp.Content.Headers.ContentLength ?? asset.Size;
 
+#if NET48
+                using var src = await resp.Content.ReadAsStreamAsync(lineCts.Token)
+#else
                 await using var src = await resp.Content.ReadAsStreamAsync(lineCts.Token)
+#endif
                     .ConfigureAwait(false);
+#if NET48
+                using var dst = new FileStream(zipPath, FileMode.Create, FileAccess.Write,
+#else
                 await using var dst = new FileStream(zipPath, FileMode.Create, FileAccess.Write,
+#endif
                     FileShare.None, 81920, FileOptions.Asynchronous);
 
                 var buffer = new byte[81920];
@@ -253,7 +269,7 @@ public sealed class GopeedProvisioner
         }
 
         // 记录版本，便于将来判断是否需要升级
-        await File.WriteAllTextAsync(VersionFile(engineDir), asset.Tag, ct).ConfigureAwait(false);
+        await FileCompat.WriteAllTextAsync(VersionFile(engineDir), asset.Tag, ct).ConfigureAwait(false);
 
         progress?.Report(new Progress(Stage.Done, 0, 0, $"内核 {asset.Tag} 已就绪"));
     }

@@ -387,7 +387,7 @@ public sealed class DownloadEngine
 
         // ---- 分片规划 ----
         // 关键：ComputeChunkSize 用 ceil 反算，保证所有块近似等长、不产生 15 字节尾块
-        int workers = Math.Clamp(options.Threads, 1, 32);
+        int workers = Math48.Clamp(options.Threads, 1, 32);
         long chunkSize = ChunkPlanner.ComputeChunkSize(total, workers);
         int chunkCount = ChunkPlanner.ComputeChunkCount(total, chunkSize);
         workers = Math.Min(workers, Math.Max(1, chunkCount));
@@ -403,8 +403,7 @@ public sealed class DownloadEngine
         //
         // FileOptions.Asynchronous 也是必需的：不带它时 RandomAccess.WriteAsync 会退回
         // 线程池同步写，多 worker 并发下线程池排队会拖慢整体吞吐。
-        var handle = File.OpenHandle(partPath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
-            FileShare.Read, FileOptions.Asynchronous);
+        var handle = PositionalFile.Open(partPath, createNew: false);
 
         var done = new IntervalSet();
         string? etagForIfRange = null;
@@ -421,12 +420,12 @@ public sealed class DownloadEngine
 
         // 每个区间连续失败次数（见 MaxChunkFailures）。上限来自设置项，让「重试次数」
         // 真正可调；夹到 1..10 防止误配成 0（一失败就报错）或过大（过期直链上白等）。
-        int maxFails = Math.Clamp(options.ChunkRetries, 1, 10);
+        int maxFails = Math48.Clamp(options.ChunkRetries, 1, 10);
         var chunkFailures = new ConcurrentDictionary<long, int>();
 
         try
         {
-            RandomAccess.SetLength(handle, total);
+            handle.SetLength(total);
 
 
             if (resumed && meta != null)
@@ -443,7 +442,7 @@ public sealed class DownloadEngine
             // 规划分片（大文件会有几万个块）也是可感知的一小段停顿，一并上报
             progress?.Report(new DownloadProgress(0, 0, 0, DownloadPhase.Planning));
 
-            int bufferSize = Math.Clamp(options.Tuning.ReadBufferBytes, 16 * 1024, 4096 * 1024);
+            int bufferSize = Math48.Clamp(options.Tuning.ReadBufferBytes, 16 * 1024, 4096 * 1024);
 
             var pending = new ConcurrentQueue<(long Start, long End)>();
             var allocator = new Allocator(total, workers, chunkSize, done);
@@ -682,7 +681,7 @@ public sealed class DownloadEngine
         {
             // flush 失败不能掩盖原始异常（例如用户取消），
             // 否则界面显示的是 IOException 而不是"已取消"
-            try { RandomAccess.FlushToDisk(handle); } catch { /* ignore */ }
+            try { handle.FlushToDisk(); } catch { /* ignore */ }
             handle.Dispose();
         }
 
@@ -790,7 +789,7 @@ public sealed class DownloadEngine
 
     private async Task<FetchOutcome> FetchRangeAsync(
         HttpClient client,
-        SafeFileHandle handle,
+        PositionalFile handle,
         ChunkState state,
         List<(string Name, string Url)> urls,
         string? ifRangeETag,
@@ -816,6 +815,10 @@ public sealed class DownloadEngine
                 using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl);
                 req.Headers.TryAddWithoutValidation("Range", $"bytes={pos}-{state.End}");
                 ApplyCustomHeaders(req, headers);
+#if NET48
+                // net48 没有 ConnectCallback，用「URI 换 IP + 补 Host 头」模拟
+                HostsRewrite48.Apply(req);
+#endif
                 // ETag 未变才继续用断点：内容变了服务器会返回 200 全量，我们据此丢弃重下
                 if (!string.IsNullOrEmpty(ifRangeETag))
                     req.Headers.TryAddWithoutValidation("If-Range", $"\"{ifRangeETag}\"");
@@ -885,8 +888,13 @@ public sealed class DownloadEngine
                     continue;
                 }
 
+#if NET48
+                using var stream = await resp.Content.ReadAsStreamAsync(ct)
+                    .ConfigureAwait(false);
+#else
                 await using var stream = await resp.Content.ReadAsStreamAsync(ct)
                     .ConfigureAwait(false);
+#endif
 
                 while (pos <= state.End)
                 {
@@ -901,7 +909,7 @@ public sealed class DownloadEngine
                     if (read <= 0) break;
 
                     await limiter.AcquireAsync(read, ct).ConfigureAwait(false);
-                    await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, read), pos, ct)
+                    await handle.WriteAsync(buffer, 0, read, pos, ct)
                         .ConfigureAwait(false);
 
                     // 边写边算首尾哨兵：不额外读盘，只多一点 CPU
@@ -969,7 +977,7 @@ public sealed class DownloadEngine
     /// </summary>
     /// <returns>一致返回 true；不一致返回 false（调用方会重下这个区间）。</returns>
     private static async Task<bool> VerifyChunkAsync(
-        SafeFileHandle handle, ChunkState state, Action<string>? log, CancellationToken ct)
+        PositionalFile handle, ChunkState state, Action<string>? log, CancellationToken ct)
     {
         var expected = state.FinishHash();
         if (expected == null) return true;      // 未启用摘要
@@ -992,7 +1000,7 @@ public sealed class DownloadEngine
         return true;
     }
 
-    private static async Task<bool> ProbeMatchesAsync(SafeFileHandle handle, long offset,
+    private static async Task<bool> ProbeMatchesAsync(PositionalFile handle, long offset,
         int length, string expectedHex, CancellationToken ct)
     {
         if (length <= 0) return true;
@@ -1001,14 +1009,14 @@ public sealed class DownloadEngine
         int total = 0;
         while (total < length)
         {
-            int read = await RandomAccess.ReadAsync(handle,
-                buffer.AsMemory(total, length - total), offset + total, ct).ConfigureAwait(false);
+            int read = await handle.ReadAsync(buffer, total, length - total,
+                offset + total, ct).ConfigureAwait(false);
             if (read <= 0) return false;        // 提前 EOF = 这段没写进去
             total += read;
         }
 
-        string actual = Convert.ToHexString(
-            System.Security.Cryptography.SHA256.HashData(buffer)).ToLowerInvariant();
+        string actual = Helpers.ToHexString(
+            Hash48.Sha256(buffer)).ToLowerInvariant();
         return string.Equals(actual, expectedHex, StringComparison.Ordinal);
     }
 
@@ -1112,6 +1120,9 @@ public sealed class DownloadEngine
                 }
 
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
+#if NET48
+                HostsRewrite48.Apply(req);
+#endif
                 ApplyCustomHeaders(req, options.Headers);
                 if (existing > 0)
                 {
@@ -1149,9 +1160,14 @@ public sealed class DownloadEngine
                     counter.Reset(0);
                 }
 
+#if NET48
+                using var stream = await resp.Content.ReadAsStreamAsync(ct)
+                    .ConfigureAwait(false);
+#else
                 await using var stream = await resp.Content.ReadAsStreamAsync(ct)
                     .ConfigureAwait(false);
-                int singleBuf = Math.Clamp(options.Tuning.ReadBufferBytes,
+#endif
+                int singleBuf = Math48.Clamp(options.Tuning.ReadBufferBytes,
                     DefaultBufferSize / 4, 4096 * 1024);
 
                 // ★ 续传不能用 FileMode.Append。
@@ -1161,7 +1177,11 @@ public sealed class DownloadEngine
                 //   接到错误位置，落出一个长度超标、内容错位的文件（而且是静默的，
                 //   只在最后「长度不符」时才发现，白白浪费一次全程下载）。
                 //   改成 Open + Seek 到已有长度：写入位置由我们显式控制，天然幂等。
+#if NET48
+                using var fs = append
+#else
                 await using var fs = append
+#endif
                     ? new FileStream(partPath, FileMode.OpenOrCreate, FileAccess.Write,
                         FileShare.Read, singleBuf, FileOptions.Asynchronous)
                     : new FileStream(partPath, FileMode.Create, FileAccess.Write,

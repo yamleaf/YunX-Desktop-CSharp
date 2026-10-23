@@ -67,7 +67,7 @@ public static class ChunkPlanner
             chunk = (long)Math.Ceiling((double)total / maxChunks);
         }
 
-        return Math.Clamp(chunk, MinChunk, MaxChunk);
+        return Math48.Clamp(chunk, MinChunk, MaxChunk);
     }
 
     /// <summary>按块大小推算块数。</summary>
@@ -85,8 +85,8 @@ public static class ChunkPlanner
     {
         int w = Math.Max(1, workers);
         long perWorker = recentSpeedBps / w;
-        if (perWorker <= 0) return Math.Clamp(fallbackChunk, MinChunk, MaxChunk);
-        return Math.Clamp(perWorker * TargetSeconds, MinChunk, MaxChunk);
+        if (perWorker <= 0) return Math48.Clamp(fallbackChunk, MinChunk, MaxChunk);
+        return Math48.Clamp(perWorker * TargetSeconds, MinChunk, MaxChunk);
     }
 
     /// <summary>尾部收缩后的块大小：剩余不足 workers 个整块时，均分到 workers 份。</summary>
@@ -94,6 +94,6 @@ public static class ChunkPlanner
     {
         int w = Math.Max(1, workers);
         long fair = remaining / w;
-        return Math.Clamp(fair, MinTailChunk, Math.Max(MinTailChunk, baseBlock));
+        return Math48.Clamp(fair, MinTailChunk, Math.Max(MinTailChunk, baseBlock));
     }
 }

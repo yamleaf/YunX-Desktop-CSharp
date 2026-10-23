@@ -47,11 +47,27 @@ public sealed partial class GuangYaDrive : ICloudDrive
     /// <summary>根目录 parentId 是空串，不是 "0"。</summary>
     private const string RootParentId = "";
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _shareIdPatternCache;
+    private static Regex ShareIdPattern() =>
+        _shareIdPatternCache ??= new Regex(@"guangyapan\.com/s/([A-Za-z0-9_-]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"guangyapan\.com/s/([A-Za-z0-9_-]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex ShareIdPattern();
+        private static partial Regex ShareIdPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _pwdInUrlPatternCache;
+    private static Regex PwdInUrlPattern() =>
+        _pwdInUrlPatternCache ??= new Regex(@"[?&]pwd=([A-Za-z0-9]+)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"[?&]pwd=([A-Za-z0-9]+)")]
-    private static partial Regex PwdInUrlPattern();
+        private static partial Regex PwdInUrlPattern();
+    #endif
 
     private readonly HttpClient _client;
     private readonly Func<string?> _cookieProvider;
@@ -290,17 +306,28 @@ public sealed partial class GuangYaDrive : ICloudDrive
     /// <summary>W3C traceparent：<c>00-&lt;32hex&gt;-&lt;16hex&gt;-01</c>，每次请求重新生成。</summary>
     private static string NewTraceparent()
     {
-        static string Hex(int n) =>
-            string.Create(n, 0, (span, _) =>
+        static string Hex(int n)
+        {
+#if NET48
+            // net48 没有 string.Create<TState>(int, TState, SpanAction)，
+            // 用 StringBuilder 等价实现（这里每次只生成 32/16 个字符，开销可忽略）。
+            const string chars = "0123456789abcdef";
+            var sb = new System.Text.StringBuilder(n);
+            for (int i = 0; i < n; i++) sb.Append(chars[Rng48.GetInt32(16)]);
+            return sb.ToString();
+#else
+            return string.Create(n, 0, (span, _) =>
             {
                 const string chars = "0123456789abcdef";
-                for (int i = 0; i < span.Length; i++) span[i] = chars[RandomNumberGenerator.GetInt32(16)];
+                for (int i = 0; i < span.Length; i++) span[i] = chars[Rng48.GetInt32(16)];
             });
+#endif
+        }
         return $"00-{Hex(32)}-{Hex(16)}-01";
     }
 
     private static string NewDeviceId() =>
-        Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        Helpers.ToHexString(Rng48.GetBytes(16)).ToLowerInvariant();
 
     // ================= 解析 =================
 

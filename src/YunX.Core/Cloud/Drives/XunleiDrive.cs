@@ -84,8 +84,8 @@ public sealed partial class XunleiDrive : ICloudDrive
         _client = client;
         _tokenProvider = tokenProvider;
         // 设备 ID 形如 40 位十六进制；未提供时按进程稳定生成（真实部署应持久化）
-        _deviceId = deviceId ?? Convert.ToHexString(
-            SHA1.HashData(Encoding.UTF8.GetBytes(Environment.MachineName +
+        _deviceId = deviceId ?? Helpers.ToHexString(
+            Hash48.Sha1(Encoding.UTF8.GetBytes(Environment.MachineName +
                 Environment.UserName + "xunlei"))).ToLowerInvariant();
     }
 
@@ -123,8 +123,16 @@ public sealed partial class XunleiDrive : ICloudDrive
         };
     }
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _shareIdPatternCache;
+    private static Regex ShareIdPattern() =>
+        _shareIdPatternCache ??= new Regex(@"/s/([A-Za-z0-9_\-]{6,40})", RegexOptions.Compiled);
+    #else
     [System.Text.RegularExpressions.GeneratedRegex(@"/s/([A-Za-z0-9_\-]{6,40})")]
-    private static partial System.Text.RegularExpressions.Regex ShareIdPattern();
+        private static partial System.Text.RegularExpressions.Regex ShareIdPattern();
+    #endif
 
     // ================= 中文口令 =================
 
@@ -192,7 +200,7 @@ public sealed partial class XunleiDrive : ICloudDrive
     {
         string h = AppClientId + AppClientVersion + AppPackageName + deviceId + timestampMs;
         foreach (var salt in CaptchaSalts)
-            h = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(h + salt)))
+            h = Helpers.ToHexString(Hash48.Md5(Encoding.UTF8.GetBytes(h + salt)))
                 .ToLowerInvariant();
         return "1." + h;
     }

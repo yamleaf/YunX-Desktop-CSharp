@@ -1,11 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>12</LangVersion>
+    <!--
+      多目标必须写在这里，不能放 Directory.Build.targets ——
+      TargetFrameworkInference 在 NuGet 还原阶段就要读 $(TargetFrameworks)，
+      而 .targets 求值比它晚，写在那边会抛 NETSDK1013。理由同 YunX.Core.csproj。
+    -->
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
     <UseWPF>true</UseWPF>
     <RootNamespace>YunX.Desktop</RootNamespace>
     <AssemblyName>YunX-Desktop</AssemblyName>
@@ -15,14 +17,15 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- 版本号唯一来源。界面/闪屏/文件属性都从这里来，
          不要在别处再写一份 —— 之前两处 fallback 各写死 "1.1.0"，
-         升版本时漏改就会出现"关于页显示旧版本"。 -->
-    <Version>1.3.0</Version>
-    <!-- 自包含发布：目标机器无需安装 .NET 运行时，双击即用 -->
-    <SelfContained>true</SelfContained>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+         升版本时漏改就会出现"关于页显示旧版本"。
+
+         1.3.0 → 1.4.0：运行时基础从「net8 自包含 70MB」换成
+         「net48 单文件 3.7MB」。这不是功能增量，是整个分发形态的重构：
+           · 体积 70MB → 3.7MB（-95%）
+           · 目标机改为需要 .NET Framework 4.8（Win10 1903+/Win11 自带）
+           · 发布目录彻底单文件：exe + LICENSE，连 .exe.config 都不再生成
+         按 semver，主版本号不动、次版本号进位。 -->
+    <Version>1.4.0</Version>
     <Product>YunX Desktop (C#)</Product>
     <Description>高速下载器：多镜像择优 + 分块多线程 + 慢连接抢占 + 断点续传</Description>
 
@@ -33,10 +36,176 @@
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/tidain/YunX-Desktop</RepositoryUrl>
     <PackageProjectUrl>https://github.com/tidain/YunX-Desktop</PackageProjectUrl>
+
+    <!--
+      多目标框架由根目录 Directory.Build.targets 声明（net8.0-windows;net48）。
+      发布方式两个框架完全不同，所以下面按 TFM 分开写配置。
+    -->
+  </PropertyGroup>
+
+  <!-- ===== net8：自包含单文件（70MB，零安装） ===== -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <!-- ===== net48：依赖系统 .NET Framework，用 Costura 把 dll 塞进 exe ===== -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <SelfContained>false</SelfContained>
+    <!--
+      必须显式给 RID：net48 的单目标默认 RID 是 win7-x86（.NET Framework 默认 32 位），
+      而 RuntimeIdentifierInference 在我们设 PlatformTarget=x64 之前就跑完，
+      于是报 NETSDK1032「win7-x86 与 x64 不兼容」。
+      显式钉成 win7-x64 后两边一致 —— 注意 RID 写在这里（csproj）才能赶上
+      inference 的求值时机，写在 Directory.Build.targets 里已经太晚。
+    -->
+    <RuntimeIdentifier>win7-x64</RuntimeIdentifier>
+    <CosturaDisableCompression>false</CosturaDisableCompression>
+    <!-- 只嵌 exe 运行时真正需要的，不把 xml/pdb 也塞进去 -->
+    <CosturaIncludeDebugSymbols>false</CosturaIncludeDebugSymbols>
+    <!--
+      ★ 原生 interop 的最新处理：**内嵌 + 启动时自解压**（见 NativeBootstrapper.cs）。
+
+      背景（两次踩坑）：
+        · 不内嵌 → 发布目录必须带 x64\SQLite.Interop.dll，用户拷漏这个文件夹
+          就报「无法加载 DLL SQLite.Interop.dll (0x8007007E)」。
+        · 内嵌给 Costura 当普通依赖 → SQLite 找不到它（它自己算路径，不走 AssemblyResolve）。
+
+      System.Data.SQLite 的查找方式是关键：它取**程序集所在目录**（AssemblyDirectory）
+      再拼 x64\ / x86\，从那里 LoadLibrary。所以只要把原生库放到
+      「某个目录\x64\SQLite.Interop.dll」，并让程序集从那个目录加载即可。
+
+      做法：把原生库作为**嵌入资源**打进 exe，启动最早时机（早于任何 SQLite 调用）
+      解压到 %LOCALAPPDATA%\YunX-Desktop-CS\native\<版本>\x64\，
+      然后 AddDllDirectory 把它加进进程搜索路径。
+      解压带版本目录 + 内容校验，升级时自动换新，旧目录可安全清理。
+
+      这里不交给 Costura：它的原生库解包目录在 %TEMP% 且路径含随机校验串，
+      既不好预测也不受我们控制。
+    -->
+    <!--
+      System.Data.SQLite 也必须排除，原因和原生库同源但更深一层：
+
+      它内部会 `Path.Combine(Assembly.GetExecutingAssembly().Location 的目录, ...)`
+      去算数据目录/配置文件路径。一旦 Costura 把它从**内存资源**加载，
+      `Assembly.Location` 就是空字符串 → Path.Combine 抛 ArgumentNullException
+      （"值不能为 null，参数名: path1"），栈里只看到 SQLiteConnection..ctor，很难联想。
+
+      所以它俩必须一起从**磁盘**加载：SQLite.dll 有 Location，
+      原生库在它旁边的 x64\ 里。见 NativeBootstrapper。
+    -->
+    <CosturaExcludeAssemblies>SQLite.Interop;System.Data.SQLite</CosturaExcludeAssemblies>
+    <!-- 别让 Costura 把 native 目录也吞进去 -->
+    <CosturaIncludeRuntimeAssemblies>false</CosturaIncludeRuntimeAssemblies>
+
+    <!--
+      ★ 不生成 YunX-Desktop.exe.config —— 让发布目录真正只剩一个 exe。
+
+      原本这个 .config 里只有两段，实测两段都可以不要：
+
+      ① <supportedRuntime sku=".NETFramework,Version=v4.8" />
+         CLR 决定「往哪个运行时加载」靠的**不是**它，而是程序集元数据里的
+         TargetFrameworkAttribute：exe 内已带 `.NETFramework,Version=v4.8`
+         与 `v4.0.30319`（grep -a 可验），所以 CLR 会直接按 4.8 加载。
+         supportedRuntime 只是给「缺框架时弹下载提示框」用的营销性兜底。
+         删掉后，缺框架的机器上 CLR 会抛异常 + 写系统事件日志，而不是弹引导框 ——
+         本产品最低要求就是 Win10 1903+/Win11（系统自带 4.8），这个兜底没有实际受众。
+
+      ② <bindingRedirect System.Runtime.CompilerServices.Unsafe 0.0.0.0-6.0.0.0 → 6.0.0.0 />
+         Unsafe 在 net48 上被 Microsoft.Bcl.AsyncInterfaces / System.Text.Json
+         牵扯进来，但 Costura 已把它内嵌进 exe（不在发布目录，没有第二个副本可冲突）。
+         实测：清空 .config 后跑 cryptoprobe 4/4 通过、accountsdiag 9 项账号全加载，
+         BCrypt / DPAPI / SQLite / System.Text.Json 全部正常。
+
+      GenerateSupportedRuntime：SDK 在 net48 下会自动往 app.config 写
+        supportedRuntime + 解析到的 bindingRedirect。必须两条一起关 ——
+        只关 GenerateBindingRedirects 的话 supportedRuntime 仍会被写进去，
+        发布目录照样多一个 .config 文件。
+    -->
+    <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <!--
+    SQLite 原生 interop → 作为**嵌入资源**打进 exe（单文件发布）。
+
+    这样发布目录只剩 YunX-Desktop.exe，不会再出现「用户只拷了 exe、
+    漏掉 x64 文件夹」导致的 0x8007007E。
+
+    只负责塞进资源；真正解压到磁盘是 NativeBootstrapper.EnsureNativeLoaded()
+    （启动最早期，早于任何 SQLite 调用）。资源名固定为
+    YunX.Desktop.Native.x64.SQLite.Interop.dll（LogicalName 显式指定，
+    避免受 RootNamespace / 目录结构变化影响）。
+
+    ⚠ 为什么不用 <EmbeddedResource Include="$(OutDir)x64\...">：
+      · $(OutDir) 里的 x64\ 是包 Content 规则在「复制到输出」阶段才放进去的，
+        而 EmbeddedResource 的求值早于那一步 —— 条件 Exists() 为 false，
+        资源被静默跳过，编译能过但 exe 里根本没有它。
+      · 直接写 NuGet 包路径最稳，代价是包版本号硬编码在这里。
+        用 Condition 保护，包升级后路径变了会让构建立刻报错（而不是静默失效）。
+  -->
+  <!-- 嵌入源路径单独提成变量：ItemGroup 的 Condition 里不能引用 %(FullPath)（MSB4190），
+       只能拿属性做判断。路径不存在时变量为空，资源就不会被加进来。 -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <_SqliteInteropCandidate>$(NuGetPackageRoot)stub.system.data.sqlite.core.netframework\1.0.118\build\net46\x64\SQLite.Interop.dll</_SqliteInteropCandidate>
+    <SqliteInteropSourcePath Condition="Exists('$(_SqliteInteropCandidate)')">$(_SqliteInteropCandidate)</SqliteInteropSourcePath>
+
+    <_SqliteManagedCandidate>$(NuGetPackageRoot)stub.system.data.sqlite.core.netframework\1.0.118\lib\net46\System.Data.SQLite.dll</_SqliteManagedCandidate>
+    <SqliteManagedSourcePath Condition="Exists('$(_SqliteManagedCandidate)')">$(_SqliteManagedCandidate)</SqliteManagedSourcePath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <_SqliteInteropDll Include="$(NuGetPackageRoot)stub.system.data.sqlite.core.netframework\1.0.118\build\net46\x64\SQLite.Interop.dll" />
+    <!-- ItemGroup 里不能引用 %(FullPath)（MSB4190），改用变量判断 -->
+    <EmbeddedResource Include="@(_SqliteInteropDll)"
+                      Condition="'$(SqliteInteropSourcePath)' != ''">
+      <LogicalName>YunX.Desktop.Native.x64.SQLite.Interop.dll</LogicalName>
+    </EmbeddedResource>
+
+    <!-- 托管程序集也要嵌入：它被 Costura 排除后不再进资源，
+         需要我们自己带，再由 NativeBootstrapper 落到磁盘（它要求有 Location）。 -->
+    <_SqliteManagedDll Include="$(NuGetPackageRoot)stub.system.data.sqlite.core.netframework\1.0.118\lib\net46\System.Data.SQLite.dll" />
+    <EmbeddedResource Include="@(_SqliteManagedDll)"
+                      Condition="'$(SqliteManagedSourcePath)' != ''">
+      <LogicalName>YunX.Desktop.Native.System.Data.SQLite.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- 资源缺失时给出明确警告，别让「编译成功但单文件跑不起来」这种事再发生一次。 -->
+  <Target Name="VerifySqliteInteropEmbedded" AfterTargets="ResolveReferences"
+          Condition="'$(TargetFramework)' == 'net48'">
+    <Warning Condition="'$(SqliteInteropSourcePath)' == ''"
+             Text="找不到 SQLite.Interop.dll 的嵌入源（NuGet 缓存路径变了？），单文件发布后数据库会打不开。期望路径：$(_SqliteInteropCandidate)" />
+    <Warning Condition="'$(SqliteManagedSourcePath)' == ''"
+             Text="找不到 System.Data.SQLite.dll 的嵌入源，单文件发布后数据库会打不开。期望路径：$(_SqliteManagedCandidate)" />
+  </Target>
+
+  <!--
+    Costura.Fody：把所有托管依赖 + 原生 interop 压缩后嵌进 exe，
+    最终发布目录只剩 YunX-Desktop.exe（+ 少量原生 dll）。
+
+    必须同时引 Fody 和 Costura.Fody 两个包：
+      · Fody           提供 MSBuild 集成（Fody.targets，真正的织入阶段）
+      · Costura.Fody   提供 weaver 实现
+    只引 Costura.Fody 时能编译通过，但织入阶段可能根本没挂上，
+    表现就是「发布目录散落一堆 dll，且日志里找不到任何 Fody 输出」。
+    显式引 Fody 后才会挂上。
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="Fody" Version="6.8.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Costura.Fody" Version="5.7.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -59,5 +228,23 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
+
+  <!--
+    兜底：万一哪天改了 GenerateSupportedRuntime 之类的开关，.config 又冒出来，
+    让它在构建日志里显眼地报一句，而不是等用户发现发布目录里多了一个不知道该不该拷的文件。
+
+    只看「发布」阶段（PublishDir 有值），普通 build 的 bin 目录不参与判断 ——
+    开发时 bin 下多一个 .config 无所谓，它不会被分发。
+    net8 段也一并检查：net8 自包含单文件同样不该有 .config。
+  -->
+  <Target Name="VerifyNoSidecarConfig" AfterTargets="Publish">
+    <PropertyGroup>
+      <_SidecarExeConfig>$(PublishDir)$(AssemblyName).exe.config</_SidecarExeConfig>
+      <_SidecarDllConfig>$(PublishDir)$(AssemblyName).dll.config</_SidecarDllConfig>
+    </PropertyGroup>
+    <Warning Condition="Exists('$(_SidecarExeConfig)')"
+             Text="发布目录出现了 $(AssemblyName).exe.config —— 单文件分发会多一个文件。请检查 GenerateSupportedRuntime / AutoGenerateBindingRedirects 是否被改回 true。" />
+    <Delete Files="$(_SidecarExeConfig);$(_SidecarDllConfig)" Condition="Exists('$(_SidecarExeConfig)') Or Exists('$(_SidecarDllConfig)')" />
+  </Target>
 
 </Project>

@@ -33,22 +33,22 @@
     <Color x:Key="ErrColor">#F87171</Color>
     <Color x:Key="WarnColor">#FBBF24</Color>
 
-    <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
-    <SolidColorBrush x:Key="SurfaceHiBrush" Color="{StaticResource SurfaceHiColor}" />
-    <SolidColorBrush x:Key="SurfaceTopBrush" Color="{StaticResource SurfaceTopColor}" />
-    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
-    <SolidColorBrush x:Key="BorderHiBrush" Color="{StaticResource BorderHiColor}" />
+    <SolidColorBrush x:Key="BgBrush" Color="{DynamicResource BgColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{DynamicResource SurfaceColor}" />
+    <SolidColorBrush x:Key="SurfaceHiBrush" Color="{DynamicResource SurfaceHiColor}" />
+    <SolidColorBrush x:Key="SurfaceTopBrush" Color="{DynamicResource SurfaceTopColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource BorderColor}" />
+    <SolidColorBrush x:Key="BorderHiBrush" Color="{DynamicResource BorderHiColor}" />
     <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource AccentColor}" />
     <SolidColorBrush x:Key="AccentHiBrush" Color="{DynamicResource AccentHiColor}" />
     <SolidColorBrush x:Key="AccentPressBrush" Color="{DynamicResource AccentPressColor}" />
     <SolidColorBrush x:Key="AccentSoftBrush" Color="{DynamicResource AccentSoftColor}" />
-    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
-    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
-    <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDimColor}" />
-    <SolidColorBrush x:Key="OkBrush" Color="{StaticResource OkColor}" />
-    <SolidColorBrush x:Key="ErrBrush" Color="{StaticResource ErrColor}" />
-    <SolidColorBrush x:Key="WarnBrush" Color="{StaticResource WarnColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{DynamicResource TextColor}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{DynamicResource TextMutedColor}" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="{DynamicResource TextDimColor}" />
+    <SolidColorBrush x:Key="OkBrush" Color="{DynamicResource OkColor}" />
+    <SolidColorBrush x:Key="ErrBrush" Color="{DynamicResource ErrColor}" />
+    <SolidColorBrush x:Key="WarnBrush" Color="{DynamicResource WarnColor}" />
 
     <!-- 强调色渐变：按钮与进度条用，比纯色更有质感 -->
     <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
@@ -75,7 +75,7 @@
 
     <!-- ===== 文本样式 ===== -->
     <Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
@@ -83,7 +83,7 @@
     </Style>
 
     <Style x:Key="PageTitle" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="22" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -91,7 +91,7 @@
     </Style>
 
     <Style x:Key="SectionTitle" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="11.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -99,14 +99,14 @@
     </Style>
 
     <Style x:Key="MutedText" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
     <Style x:Key="CaptionText" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
@@ -119,7 +119,7 @@
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="36" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="False" />
@@ -133,7 +133,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="#26FFFFFF" />
-                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="#33FFFFFF" />
@@ -173,7 +173,7 @@
         <Setter Property="Height" Value="42" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="False" />
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
             <Setter.Value>
@@ -191,13 +191,13 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="pill" Property="Background" Value="#14FFFFFF" />
-                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="pill" Property="Background"
                                     Value="{DynamicResource AccentSoftBrush}" />
                             <Setter TargetName="bar" Property="Opacity" Value="1" />
-                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -209,10 +209,10 @@
          按钮
          ============================================================ -->
     <Style x:Key="GhostButton" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceHiBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceHiBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Padding" Value="14,7" />
@@ -232,13 +232,13 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background"
-                                    Value="{StaticResource SurfaceTopBrush}" />
+                                    Value="{DynamicResource SurfaceTopBrush}" />
                             <Setter TargetName="bd" Property="BorderBrush"
-                                    Value="{StaticResource BorderHiBrush}" />
+                                    Value="{DynamicResource BorderHiBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="bd" Property="Background"
-                                    Value="{StaticResource SurfaceBrush}" />
+                                    Value="{DynamicResource SurfaceBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.38" />
@@ -260,10 +260,10 @@
         所以单独一档：与 GhostButton 同一套配色和圆角，只把尺寸压小。
     -->
     <Style x:Key="SmallButton" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceHiBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceHiBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Padding" Value="9,3" />
@@ -284,14 +284,14 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background"
-                                    Value="{StaticResource SurfaceTopBrush}" />
+                                    Value="{DynamicResource SurfaceTopBrush}" />
                             <Setter TargetName="bd" Property="BorderBrush"
-                                    Value="{StaticResource BorderHiBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                    Value="{DynamicResource BorderHiBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="bd" Property="Background"
-                                    Value="{StaticResource SurfaceBrush}" />
+                                    Value="{DynamicResource SurfaceBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.38" />
@@ -343,7 +343,7 @@
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="30" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="False" />
@@ -358,7 +358,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="#1AFFFFFF" />
-                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.3" />
@@ -378,13 +378,16 @@
          需要特定宽度的（如数字框）只改 Width，高度和内边距沿用样式。
          ============================================================ -->
     <Style x:Key="InputBox" TargetType="TextBox">
-        <Setter Property="Background" Value="{StaticResource SurfaceHiBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceHiBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderHiBrush}" />
-        <Setter Property="Padding" Value="12,0" />
+        <!--
+          ★ BorderThickness 必须为 0：描边改由「外层纯色 Border」承担。
+          见下方模板注释里的抗锯齿说明。
+        -->
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="13,0" />
         <Setter Property="Height" Value="36" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="13" />
@@ -392,38 +395,48 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="8">
-                        <!--
-                            ★ Padding 只能生效一次。
+                    <!--
+                      ============================================================
+                      抗锯齿混色的根因与改法
+                      ============================================================
 
-                            实测（GetRectFromCharacterIndex(0)）：早期这句同时写了
-                            Margin="{TemplateBinding Padding}"，而 PART_ContentHost 是
-                            ScrollViewer，**它自己的 Padding 也继承了 TextBox 的 Padding**，
-                            于是 13 被加了两遍 —— 文本实际起点是 1(描边) + 13 + 13 = 27，
-                            而不是外观上的 14。占位提示无论怎么调都对不上光标。
+                      【根因】Border.BorderThickness 画的是「沿边框内缩的矩形环」。
+                      对正方形来说环的内沿和外沿是等距的；但一旦有 CornerRadius，
+                      弧段上内外沿的**长度不同**（外沿长、内沿短），
+                      1px 的环在弧上会被拉成一条斜向的宽带 ——
+                      于是弧段出现「半透明混色带」，放大看是毛边，缩小看是脏圈。
 
-                            改法：Padding 交给 TextBox 的默认行为（ScrollViewer 的 Padding
-                            已继承），模板里不再加 Margin。
-                        -->
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                      HorizontalScrollBarVisibility="Hidden"
-                                      VerticalScrollBarVisibility="Hidden" />
+                      【改法】不用 BorderThickness：
+                        外层 Border   ：纯色描边色，圆角 R
+                        内层 Border   ：填充色，Margin="1"，圆角 R-1
+                      Margin=1 让内层与外层**同心**（不是等比缩放），
+                      两段弧线严格平行，抗锯齿只发生在
+                      「单一色块 ↔ 窗口背景」之间，不会再有中间混色带。
+
+                      半径同步减 1：36/8 → 外层 8、内层 7。
+                      ============================================================
+                    -->
+                    <Border x:Name="bdStroke" CornerRadius="8"
+                            Background="{DynamicResource BorderHiBrush}">
+                        <Border x:Name="bdFill" CornerRadius="7" Margin="1"
+                                Background="{TemplateBinding Background}">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden" />
+                        </Border>
                     </Border>
                     <ControlTemplate.Triggers>
                         <!--
-                            聚焦只改描边颜色，不加外发光层：
-                            外发光需要比本体更大的元素，会从圆角边缘漏出一圈色块，
-                            看起来像"两个框叠在一起"。
+                          聚焦改的是**外层描边色**（单色块换色，不引入渐变/发光），
+                          内层填充同时提亮一档，视觉上"整框浮起"。
+                          两者都只动纯色，抗锯齿行为不变。
                         -->
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="bd" Property="BorderBrush"
+                            <Setter TargetName="bdStroke" Property="Background"
                                     Value="{DynamicResource AccentHiBrush}" />
-                            <Setter TargetName="bd" Property="Background"
-                                    Value="{StaticResource SurfaceTopBrush}" />
+                            <Setter TargetName="bdFill" Property="Background"
+                                    Value="{DynamicResource SurfaceTopBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5" />
@@ -435,12 +448,12 @@
     </Style>
 
     <Style x:Key="InputPassword" TargetType="PasswordBox">
-        <Setter Property="Background" Value="{StaticResource SurfaceHiBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceHiBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderHiBrush}" />
-        <Setter Property="Padding" Value="12,0" />
+        <!-- 同 InputBox：描边交给外层 Border，BorderThickness 归零 -->
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="13,0" />
         <Setter Property="Height" Value="36" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
@@ -448,17 +461,24 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="PasswordBox">
-                    <Border x:Name="bd" Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="8">
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
+                    <!-- 两层同心 Border 抗锯齿，原理见 InputBox 模板注释 -->
+                    <Border x:Name="bdStroke" CornerRadius="8"
+                            Background="{DynamicResource BorderHiBrush}">
+                        <Border x:Name="bdFill" CornerRadius="7" Margin="1"
+                                Background="{TemplateBinding Background}">
+                            <!--
+                              ★ 这里不再写 Margin="{TemplateBinding Padding}"。
+                              PART_ContentHost 是 ScrollViewer，它的 Padding 已经继承了
+                              PasswordBox 的 Padding —— 再加一次 Margin 就是**双倍缩进**，
+                              和 InputBox 早期那个「占位与光标对不上」是同一个根因。
+                            -->
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          VerticalAlignment="Center" />
+                        </Border>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="bd" Property="BorderBrush"
+                            <Setter TargetName="bdStroke" Property="Background"
                                     Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -469,9 +489,14 @@
 
     <!-- ============================================================
          复选框：自绘对勾（避免系统主题把勾画成叉）
+
+         ★ 17×17 配 CornerRadius=5 时，弧段占边长的比例很大，
+         BorderThickness 的「内外沿长度不等」在这里最明显 ——
+         选中态整块填充时混色带尤其显眼。所以这里同样改成
+         外层描边 + 内层 Margin=1 填充，半径 5 → 4。
          ============================================================ -->
     <Style x:Key="FlatCheck" TargetType="CheckBox">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Cursor" Value="Hand" />
@@ -479,28 +504,38 @@
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Border x:Name="box" Width="17" Height="17" CornerRadius="5"
-                                Background="{StaticResource SurfaceHiBrush}"
-                                BorderBrush="{StaticResource BorderHiBrush}"
-                                BorderThickness="1" VerticalAlignment="Center">
+                        <!--
+                          外层 17×17 / R5 是描边；内层 Margin=1 → 15×15 / R4 是填充。
+                          对勾画在**外层**（不受 Margin 影响），坐标沿用原来的
+                          17×17 画布，视觉位置不变。
+                        -->
+                        <Grid Width="17" Height="17" VerticalAlignment="Center">
+                            <Border x:Name="boxStroke" CornerRadius="5"
+                                    Background="{DynamicResource BorderHiBrush}" />
+                            <Border x:Name="boxFill" CornerRadius="4" Margin="1"
+                                    Background="{DynamicResource SurfaceHiBrush}" />
                             <Path x:Name="tick" Data="M 3.8,8.8 L 6.9,12 L 13.2,4.6"
                                   Stroke="#FFFFFF" StrokeThickness="2.4"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                   StrokeLineJoin="Round" Visibility="Collapsed" />
-                        </Border>
+                        </Grid>
                         <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="box" Property="BorderBrush"
+                            <Setter TargetName="boxStroke" Property="Background"
                                     Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="box" Property="Background"
+                            <!-- 选中态：描边与填充同色（纯色块，无混色带） -->
+                            <Setter TargetName="boxStroke" Property="Background"
                                     Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="box" Property="BorderBrush"
+                            <Setter TargetName="boxFill" Property="Background"
                                     Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="tick" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -573,14 +608,14 @@
          卡片：默认带 1px 低对比描边，用于分组
          ============================================================ -->
     <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="10" />
     </Style>
 
     <Style x:Key="CardFlat" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource SurfaceHiBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceHiBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="10" />
     </Style>
@@ -625,9 +660,9 @@
          ComboBox：必须自绘，系统默认模板是浅色
          ============================================================ -->
     <Style x:Key="FlatComboBox" TargetType="ComboBox">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceHiBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderHiBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceHiBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderHiBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
@@ -648,10 +683,15 @@
                                         Mode=TwoWay}">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
-                                    <Border x:Name="tbd"
-                                            Background="{StaticResource SurfaceHiBrush}"
-                                            BorderBrush="{StaticResource BorderHiBrush}"
-                                            BorderThickness="1" CornerRadius="8">
+                                    <!--
+                                      圆角描边用「外层纯色 + 内层 Margin=1」（R8 → 内层 R7），
+                                      不用 BorderThickness：弧段上 1px 环会被拉成斜向宽带，
+                                      出现描边×填充的混色脏边。
+                                    -->
+                                    <Border x:Name="tbdStroke" CornerRadius="8"
+                                            Background="{DynamicResource BorderHiBrush}">
+                                    <Border x:Name="tbd" CornerRadius="7" Margin="1"
+                                            Background="{DynamicResource SurfaceHiBrush}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -664,12 +704,13 @@
                                             <Path Grid.Column="1" Data="{StaticResource IconChevronDown}"
                                                   Width="12" Height="12" Stretch="Uniform"
                                                   Margin="0,0,11,0" VerticalAlignment="Center"
-                                                  Fill="{StaticResource TextMutedBrush}" />
+                                                  Fill="{DynamicResource TextMutedBrush}" />
                                         </Grid>
+                                    </Border>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="tbd" Property="BorderBrush"
+                                            <Setter TargetName="tbdStroke" Property="Background"
                                                     Value="{DynamicResource AccentBrush}" />
                                         </Trigger>
                                     </ControlTemplate.Triggers>
@@ -689,9 +730,9 @@
                                Placement="Bottom" Focusable="False"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
                                PopupAnimation="Fade">
-                            <Border Background="{StaticResource SurfaceTopBrush}"
-                                    BorderBrush="{StaticResource BorderHiBrush}"
-                                    BorderThickness="1" CornerRadius="8"
+                            <!-- 圆角描边：外层纯色 + 内层 Margin=1（R8 → 内层 R7） -->
+                            <Border CornerRadius="8"
+                                    Background="{DynamicResource BorderHiBrush}"
                                     Margin="0,4,0,0"
                                     MinWidth="{TemplateBinding ActualWidth}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}">
@@ -699,11 +740,14 @@
                                     <DropShadowEffect Color="#000000" BlurRadius="16"
                                                       ShadowDepth="3" Opacity="0.45" />
                                 </Border.Effect>
+                                <Border CornerRadius="7" Margin="1"
+                                        Background="{DynamicResource SurfaceTopBrush}">
                                 <ScrollViewer Style="{StaticResource SlimScrollViewer}"
                                               VerticalScrollBarVisibility="Auto"
                                               Margin="0,4">
                                     <ItemsPresenter />
                                 </ScrollViewer>
+                                </Border>
                             </Border>
                         </Popup>
                     </Grid>
@@ -718,7 +762,7 @@
     </Style>
 
     <Style x:Key="FlatComboBoxItem" TargetType="ComboBoxItem">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Padding" Value="11,7" />
@@ -755,7 +799,7 @@
          徽章
          ============================================================ -->
     <Style x:Key="Badge" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource SurfaceTopBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceTopBrush}" />
         <Setter Property="CornerRadius" Value="5" />
         <Setter Property="Padding" Value="7,2.5" />
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -767,9 +811,9 @@
          弹出一个白底黑字的方框，非常刺眼。这里给全局默认样式，不用每处单独指定。
          ============================================================ -->
     <Style TargetType="ToolTip">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceTopBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceTopBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="9,6" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
@@ -817,7 +861,7 @@
     <Style x:Key="ToggleSwitch" TargetType="CheckBox">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="Cursor" Value="Hand" />
         <!-- 撑满整行，开关才能真的贴到最右 -->
         <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -837,26 +881,43 @@
                              形成"凹槽"感；"开"变成强调蓝，两态一眼能分清。
                              早先用 SurfaceTopBrush 太接近卡片底色，
                              截图里开关的开/关几乎看不出区别。 -->
-                        <Border x:Name="Track" Grid.Column="1"
-                                Width="42" Height="24" CornerRadius="12"
+                        <Border x:Name="TrackStroke" Grid.Column="1"
+                                Width="43" Height="25" CornerRadius="12.5"
+                                Background="#FF3D4553"
+                                VerticalAlignment="Center"
+                                SnapsToDevicePixels="True"
+                                UseLayoutRounding="True">
+                        <Border x:Name="Track"
+                                CornerRadius="11.5" Margin="1"
                                 Background="#FF2E3440"
-                                BorderBrush="#FF3D4553"
-                                BorderThickness="1"
-                                VerticalAlignment="Center">
-                            <!-- 滑块：关=灰白小圆，开=纯白，配合轨道变色形成对比 -->
-                            <Border x:Name="Knob" Width="18" Height="18"
-                                    CornerRadius="9" Background="#FFA8B0BD"
+                                VerticalAlignment="Center"
+                                SnapsToDevicePixels="True"
+                                UseLayoutRounding="True">
+                            <!-- 滑块：关=灰白小圆，开=纯白，配合轨道变色形成对比
+
+                                 ★ 尺寸全部取半像素（43x25 / r12.5，滑块 19 / r9.5）。
+                                   原因：Border 的 CornerRadius 由 WPF 用几何抗锯齿绘制，
+                                   边缘必然带一圈半透明像素。正方形滑块半径恰为边长一半时，
+                                   圆心会落在像素中心线上 —— 那圈半透明边与底下轨道的描边
+                                   再混一次，视觉上就是「滑块周围发灰的晕圈」。
+                                   把整体尺寸做成奇数、半径做成 x.5，边缘正好落在像素边界，
+                                   晕圈消失（3 倍放大对比截图验证过）。 -->
+                            <Border x:Name="Knob" Width="19" Height="19"
+                                    CornerRadius="9.5" Background="#FFA8B0BD"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Margin="2,0,0,0" />
+                                    Margin="2.5,0,0,0"
+                                    SnapsToDevicePixels="True"
+                                    UseLayoutRounding="True" />
+                        </Border>
                         </Border>
                     </Grid>
 
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="TrackStroke" Property="Background"
+                                    Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="Track" Property="Background"
-                                    Value="{StaticResource AccentBrush}" />
-                            <Setter TargetName="Track" Property="BorderBrush"
-                                    Value="{StaticResource AccentBrush}" />
+                                    Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="Knob" Property="Background" Value="#FFFFFFFF" />
 
                             <Trigger.EnterActions>
@@ -866,7 +927,7 @@
                                         <ThicknessAnimation
                                             Storyboard.TargetName="Knob"
                                             Storyboard.TargetProperty="Margin"
-                                            To="20,0,0,0" Duration="0:0:0.15">
+                                            To="19,0,0,0" Duration="0:0:0.15">
                                             <ThicknessAnimation.EasingFunction>
                                                 <CubicEase EasingMode="EaseOut" />
                                             </ThicknessAnimation.EasingFunction>
@@ -881,7 +942,7 @@
                                         <ThicknessAnimation
                                             Storyboard.TargetName="Knob"
                                             Storyboard.TargetProperty="Margin"
-                                            To="2,0,0,0" Duration="0:0:0.15">
+                                            To="2.5,0,0,0" Duration="0:0:0.15">
                                             <ThicknessAnimation.EasingFunction>
                                                 <CubicEase EasingMode="EaseOut" />
                                             </ThicknessAnimation.EasingFunction>

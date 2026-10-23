@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+#if !NET48
 using Microsoft.Data.Sqlite;
+#endif
 
 namespace YunX.Core.Windows;
 
@@ -232,6 +234,9 @@ public static class BrowserCookieReader
     {
         var result = new List<(string, string)>();
 
+#if NET48
+        string connString = Sqlite48.Build(dbPath, SqliteOpenMode48.ReadOnly, pooling: false);
+#else
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = dbPath,
@@ -240,7 +245,10 @@ public static class BrowserCookieReader
             Pooling = false,
         };
 
-        using var conn = new SqliteConnection(builder.ToString());
+        string connString = builder.ToString();
+#endif
+
+        using var conn = new SqliteConnection(connString);
         conn.Open();
 
         using var cmd = conn.CreateCommand();
@@ -302,7 +310,12 @@ public static class BrowserCookieReader
             byte[] raw = Convert.FromBase64String(b64);
             // 去掉 "DPAPI" 五字节前缀
             if (raw.Length <= 5) return null;
+#if NET48
+            byte[] protectedKey = new byte[raw.Length - 5];
+            Array.Copy(raw, 5, protectedKey, 0, protectedKey.Length);
+#else
             byte[] protectedKey = raw[5..];
+#endif
 
             return ProtectedData.Unprotect(protectedKey, null, DataProtectionScope.CurrentUser);
         }
@@ -332,7 +345,7 @@ public static class BrowserCookieReader
                 var cipher = enc.AsSpan(15, enc.Length - 15 - 16).ToArray();
                 var tag = enc.AsSpan(enc.Length - 16, 16).ToArray();
 
-                using var aes = new AesGcm(key, 16);
+                using var aes = new AesGcmCompat(key, 16);
                 var plain = new byte[cipher.Length];
                 aes.Decrypt(nonce, cipher, tag, plain);
                 return (Encoding.UTF8.GetString(plain), false);
@@ -348,15 +361,20 @@ public static class BrowserCookieReader
         {
             try
             {
-                byte[] legacyKey = Rfc2898DeriveBytes.Pbkdf2("peanuts", Encoding.ASCII.GetBytes("saltysalt"),
-                    1, HashAlgorithmName.SHA1, 16);
+                byte[] legacyKey = Pbkdf2_48.Derive(Encoding.ASCII.GetBytes("peanuts"),
+                    Encoding.ASCII.GetBytes("saltysalt"), 1, HashAlgorithmName.SHA1, 16);
                 using var aes = Aes.Create();
                 aes.Key = legacyKey;
                 aes.IV = Encoding.ASCII.GetBytes(new string(' ', 16));
                 aes.Mode = CipherMode.CBC;
                 aes.Padding = PaddingMode.PKCS7;
 
+#if NET48
+                byte[] plain = AesCbcCompat.DecryptCbc(legacyKey, aes.IV, enc.AsSpan(3).ToArray(),
+                    PaddingMode.PKCS7);
+#else
                 byte[] plain = aes.DecryptCbc(enc.AsSpan(3).ToArray(), aes.IV);
+#endif
                 return (Encoding.UTF8.GetString(plain), false);
             }
             catch

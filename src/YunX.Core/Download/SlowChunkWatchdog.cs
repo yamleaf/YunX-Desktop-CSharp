@@ -155,7 +155,14 @@ public sealed class ChunkState : IDisposable
         if (rel < _headLen)
         {
             int take = (int)Math.Min(data.Length, _headLen - rel);
-            if (take > 0) _headHash.AppendData(data[..take]);
+            #if NET48
+                // net48 不支持 Span 的 range 切片（缺 RuntimeHelpers.GetSubArray），
+                // IncrementalHash.AppendData 也没有 Span 重载 → 先转数组。
+                // 每次最多 16KB，且只在分片首尾各一次，开销可忽略。
+                if (take > 0) _headHash.AppendData(data.Slice(0, take).ToArray());
+#else
+                if (take > 0) _headHash.AppendData(data[..take]);
+#endif
         }
 
         // 尾部区间 [Size - _tailLen, Size)
@@ -166,7 +173,7 @@ public sealed class ChunkState : IDisposable
             // 裁到 _tailLen：一段数据可能整段落在尾部区间内且比哨兵长，
             // 不裁的话写入侧摘要会覆盖多余字节，校验侧只读 _tailLen 必然对不上。
             int take = (int)Math.Min(data.Length - skip, _tailLen);
-            if (take > 0) _tailHash!.AppendData(data.Slice(skip, take));
+            if (take > 0) _tailHash!.AppendData(data.Slice(skip, take).ToArray());
         }
     }
 
@@ -176,8 +183,8 @@ public sealed class ChunkState : IDisposable
         if (_headHash == null) return null;
         if (_headHex == null)
         {
-            _headHex = Convert.ToHexString(_headHash.GetHashAndReset()).ToLowerInvariant();
-            _tailHex = Convert.ToHexString(_tailHash!.GetHashAndReset()).ToLowerInvariant();
+            _headHex = Helpers.ToHexString(_headHash.GetHashAndReset()).ToLowerInvariant();
+            _tailHex = Helpers.ToHexString(_tailHash!.GetHashAndReset()).ToLowerInvariant();
         }
 
         // IncrementalHash 持有 SafeHashHandle：取完摘要必须立刻释放，

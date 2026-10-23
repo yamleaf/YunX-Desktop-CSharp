@@ -196,6 +196,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloudLogoutCommand = new AsyncRelayCommand(CloudLogoutAsync);
         ExportBackupCommand = new AsyncRelayCommand(ExportBackupAsync);
         ImportBackupCommand = new AsyncRelayCommand(ImportBackupAsync);
+        ResetCredentialsCommand = new AsyncRelayCommand(ResetCredentialsAsync);
 
         _ = InitializeAsync();
     }
@@ -980,6 +981,60 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _cloudStatus = "";
     public string CloudStatus { get => _cloudStatus; set => SetProperty(ref _cloudStatus, value); }
 
+    private bool _initFailed;
+    /// <summary>
+    /// 初始化是否失败（服务装配阶段抛异常）。
+    ///
+    /// <para>失败后 <c>_services</c> 为 null，所有依赖它的刷新（任务、历史、
+    /// 收藏、网盘账号）都会静默跳过 —— 界面表现为「每个页都是空的」，
+    /// 而日志里只有一行。有了这个标志，页面至少能明确告诉用户去查日志。</para>
+    /// </summary>
+    public bool InitFailed
+    {
+        get => _initFailed;
+        set
+        {
+            if (SetProperty(ref _initFailed, value))
+                OnPropertyChanged(nameof(InitFailureIsCredential));
+        }
+    }
+
+    private bool _initFailureIsCredential;
+    /// <summary>
+    /// 这次初始化失败是否**由加密凭据引起**。
+    ///
+    /// <para>页面上「清理加密凭据并重建」按钮只在为 true 时显示。
+    /// 上一版没有这个区分，导致 SQLite 原生库缺失时也引导用户去清凭据 ——
+    /// 那条路治不好，还会白白丢掉登录态。</para>
+    /// </summary>
+    public bool InitFailureIsCredential
+    {
+        get => _initFailureIsCredential;
+        set => SetProperty(ref _initFailureIsCredential, value);
+    }
+
+    private string _initFailureMessage = "";
+    /// <summary>初始化失败的具体原因（显示在页面上，便于用户反馈）。</summary>
+    public string InitFailureMessage
+    {
+        get => _initFailureMessage;
+        set => SetProperty(ref _initFailureMessage, value);
+    }
+
+    private string _credentialWarning = "";
+    /// <summary>凭证相关的非致命告警（如「主密钥解开失败，凭证已失效」）。</summary>
+    public string CredentialWarning
+    {
+        get => _credentialWarning;
+        set
+        {
+            if (SetProperty(ref _credentialWarning, value))
+                OnPropertyChanged(nameof(HasCredentialWarning));
+        }
+    }
+
+    public bool HasCredentialWarning => !string.IsNullOrEmpty(_credentialWarning);
+
     // ===== 实验性设置的双向绑定（带范围校验）=====
     public int ReadBufferKb
     {
@@ -1025,7 +1080,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _settings.MaxConcurrentTasks;
         set
         {
-            int clamped = Math.Clamp(value, 1, 10);
+            int clamped = Math48.Clamp(value, 1, 10);
             if (_settings.MaxConcurrentTasks == clamped) return;
 
             _settings.MaxConcurrentTasks = clamped;
@@ -1054,7 +1109,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _settings.CompletedHistoryLimit;
         set
         {
-            int clamped = Math.Clamp(value, 1, 1000);
+            int clamped = Math48.Clamp(value, 1, 1000);
             if (_settings.CompletedHistoryLimit == clamped) return;
 
             _settings.CompletedHistoryLimit = clamped;
@@ -1267,7 +1322,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int Threads
     {
         get => _settings.Threads;
-        set { _settings.Threads = Math.Clamp(value, 1, 32); OnPropertyChanged(); }
+        set { _settings.Threads = Math48.Clamp(value, 1, 32); OnPropertyChanged(); }
     }
 
     public bool ResumeEnabled
@@ -1435,6 +1490,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public AsyncRelayCommand ImportBackupAsyncCommand => ImportBackupCommand;
     public AsyncRelayCommand ImportBackupCommand { get; }
 
+    /// <summary>清理损坏的加密凭据并重建（凭证告警条上的操作）。</summary>
+    public AsyncRelayCommand ResetCredentialsCommand { get; }
+
     // ===================== 初始化 =====================
 
     private async Task InitializeAsync()
@@ -1458,8 +1516,46 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception e)
         {
-            await LogAsync($"初始化服务失败：{e.Message}", true);
+            // ★ 这里原来只记 e.Message，把栈全丢了。
+            //
+            //   实际踩到的后果：net48 版启动时 AesGcmCompat 抛
+            //   「BCryptEncrypt 失败（NTSTATUS 0xC000000D）」，日志只有这一句，
+            //   完全看不出是 CredentialCipher.Initialize → Wrap → AesGcmEncrypt 的哪一步。
+            //   而 catch 之后直接 return，意味着账号页/历史/收藏全都不会填充 ——
+            //   用户看到的是「账号页一直空白」，跟「初始化失败」看不出任何关联。
+            //
+            //   所以：记完整栈，并且把失败状态暴露到 UI（CloudStatus），
+            //   别再让整个初始化静默中止。
+            await LogAsync($"初始化服务失败：{e}", true);
+            InitFailed = true;
+            InitFailureMessage = e.Message;
+            // 分类：只有真的是加密问题才允许引导用户清理凭据。
+            // （上一版没分类，SQLite 原生库缺失时也劝人去清 credential.key。）
+            InitFailureIsCredential = ClassifyInitFailure(e) == InitFailureKind.Credential;
+
+            // ★ 失败必须让用户看见，并且给出可操作的出路。
+            //
+            //   之前这里只是 return —— 用户看到的是「账号页一直空白」，
+            //   既不知道原因，也没有任何补救入口，只能一直卡着。
+            //   弹窗按失败类别给不同的主按钮（见 PromptInitFailureAsync），
+            //   「清理凭据」只对加密类失败才出现。
+            await PromptInitFailureAsync(e, retry: true).ConfigureAwait(true);
             return;
+        }
+
+        // 服务已建起来了：清掉上一次的失败标志（走「重试初始化」成功时必须复位，
+        // 否则页面上的红色失败条会一直挂着，反而让用户以为还没修好）。
+        InitFailed = false;
+        InitFailureMessage = "";
+
+        // 主密钥被重置 = 旧凭证全废。这不是致命错误（程序能继续跑），
+        // 但用户必须知道「为什么账号全部退出了」，否则会以为是自己没登录。
+        if (_services.Cipher.MasterKeyWasReset)
+        {
+            await LogAsync("主密钥无法解开，已生成新密钥；此前保存的凭证已失效。", true);
+            CredentialWarning = "之前保存的网盘凭证已失效（主密钥无法解开），请重新登录。";
+            // 没有 Toast 实例可用（它挂在 MainWindow 上），靠绑定 CredentialWarning
+            // 在账号页顶部显示常驻提示 —— 比一闪而过的浮层更适合「需要用户行动」的信息。
         }
 
         await LogAsync("正在初始化网络环境…");
@@ -1509,6 +1605,241 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         // 剪贴板检测：默认开启，可在设置里关掉
         ApplyClipboardWatch();
+    }
+
+    /// <summary>
+    /// 初始化失败时的交互式恢复流程。
+    ///
+    /// <para><b>为什么必须弹窗</b>：初始化失败会让 <c>_services</c> 为 null，
+    /// 于是账号、历史、收藏、任务恢复全部静默跳过 —— 界面上只是「一片空白」，
+    /// 用户既不知道原因，也没有任何补救入口。这类失败绝大多数是加密凭据坏了
+    /// （主密钥解不开），而它**完全可以自愈**：删掉 credential.key 重建即可，
+    /// 代价是已保存的网盘登录态失效（用户重新登录就行）。</para>
+    ///
+    /// <para>关键点：不要求用户重启程序。点「清理并重建」后直接重试初始化。</para>
+    /// </summary>
+    /// <summary>
+    /// 清理损坏的加密凭据并重建（凭证告警条上的按钮）。
+    ///
+    /// <para>与 <see cref="PromptInitFailureAsync"/> 的区别：那个用在「初始化直接失败、
+    /// 程序起不来」的场景；这个用在「程序起来了，但主密钥解不开、旧凭证已失效」的场景 ——
+    /// 后者不致命，但用户需要一条明确的补救路径，而不是干看着账号全是「未登录」。</para>
+    /// </summary>
+    private async Task ResetCredentialsAsync()
+    {
+        string keyPath = _services?.Cipher.KeyFilePath
+            ?? Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData), "YunX-Desktop-CS", "credential.key");
+
+        int pick = Views.PromptDialog.ChooseWithPrimary(
+            "清理加密凭据",
+            "这会删除本机的加密密钥文件并重新生成：\n" +
+            keyPath + "\n\n" +
+            "效果：账号列表恢复正常，但**所有已保存的网盘登录状态会失效**，需要重新登录。\n" +
+            "已下载的文件、下载历史、收藏不受影响。",
+            0, "清理并重建", "取消");
+        if (pick != 0) return;
+
+        try
+        {
+            if (_services != null)
+            {
+                _services.Cipher.ResetKeyFile();
+                // 凭证表里存的都是旧密钥加密的密文，重建后一律解不开 ——
+                // 留着只会让每个平台在读取时各抛一次异常，干脆清空。
+                _services.Credentials.ClearAll();
+                BuildCloudAccountRows();
+            }
+            else
+            {
+                if (File.Exists(keyPath)) File.Delete(keyPath);
+                // 走了这条说明服务没建起来，需要重新初始化整条链路
+                await InitializeAsync().ConfigureAwait(true);
+                return;
+            }
+
+            CredentialWarning = "";
+            await LogAsync("加密凭据已重建，请重新登录各网盘。");
+        }
+        catch (Exception ex)
+        {
+            await LogAsync("重建凭据失败：" + ex.Message, true);
+            Views.PromptDialog.Alert("重建失败",
+                ex.Message + "\n\n如果文件被占用，可以手动删除后重启程序：\n" + keyPath);
+        }
+    }
+
+    /// <summary>初始化失败的类别 —— 决定弹窗文案和「主按钮该做什么」。</summary>
+    private enum InitFailureKind
+    {
+        /// <summary>加密凭据（credential.key）损坏或解不开。清理重建有效。</summary>
+        Credential,
+        /// <summary>数据库打不开（原生 interop 缺失 / 文件被占用）。清理凭据无效。</summary>
+        Database,
+        /// <summary>其它未知原因。不要引导用户去清理凭据。</summary>
+        Other,
+    }
+
+    /// <summary>
+    /// 按异常特征判断失败类别。
+    ///
+    /// <para>判据全部来自实际踩过的错：</para>
+    /// <list type="bullet">
+    /// <item><c>CryptographicException</c> / 消息里带 BCrypt、认证标签、credential.key
+    ///   → 加密问题，清理有效。</item>
+    /// <item>消息里带 <c>SQLite.Interop</c>、<c>SQLite</c>、<c>yunx.db</c> 或异常类型是
+    ///   <c>DllNotFoundException</c>/<c>BadImageFormatException</c>
+    ///   → 数据库/原生库问题，清理凭据**完全无效**（这条是实机踩到的）。</item>
+    /// </list>
+    /// </summary>
+    private static InitFailureKind ClassifyInitFailure(Exception error)
+    {
+        // 逐层展开 AggregateException / InnerException —— AppServices 是在
+        // Task.Run 里构造的，真实异常常被包一层。
+        for (Exception? e = error; e != null; e = e.InnerException)
+        {
+            string msg = e.Message ?? "";
+
+            if (e is DllNotFoundException or BadImageFormatException ||
+                msg.Contains("SQLite", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("yunx.db", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("数据库", StringComparison.Ordinal))
+            {
+                return InitFailureKind.Database;
+            }
+
+            if (e is System.Security.Cryptography.CryptographicException ||
+                msg.Contains("BCrypt", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("认证标签", StringComparison.Ordinal) ||
+                msg.Contains("credential.key", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("密钥", StringComparison.Ordinal))
+            {
+                return InitFailureKind.Credential;
+            }
+
+            if (e is AggregateException agg && agg.InnerException != null)
+            {
+                var inner = ClassifyInitFailure(agg.InnerException);
+                if (inner != InitFailureKind.Other) return inner;
+            }
+        }
+        return InitFailureKind.Other;
+    }
+
+    private async Task PromptInitFailureAsync(Exception error, bool retry)
+    {
+        string dataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "YunX-Desktop-CS");
+        string keyPath = Path.Combine(dataDir, "credential.key");
+
+        // ★ 必须先判断「这次失败到底是不是加密引起的」。
+        //
+        //   上一版这里无条件把任何初始化异常都说成「加密凭据损坏」，
+        //   主按钮也是「清理并重建」。实机踩到的后果：
+        //   真实原因是 SQLite.Interop.dll 找不到（原生库没随包发布），
+        //   弹窗却让用户去清理 credential.key —— 那条路永远治不好，
+        //   而且用户会真的丢掉网盘登录态。误导性文案比没有文案更糟。
+        var kind = ClassifyInitFailure(error);
+
+        string detail;
+        string primary;
+        string secondary;
+
+        switch (kind)
+        {
+            case InitFailureKind.Credential:
+                detail =
+                    "程序初始化失败，账号列表、下载历史、收藏都无法加载。\n\n" +
+                    "原因：" + error.Message + "\n\n" +
+                    "加密凭据文件损坏或无法解开：\n" + keyPath + "\n\n" +
+                    "可以清理它并重建，程序会立刻恢复正常。\n" +
+                    "代价：已保存的网盘登录状态会失效，需要重新登录。";
+                primary = "清理并重建";
+                secondary = "打开数据目录";
+                break;
+
+            case InitFailureKind.Database:
+                detail =
+                    "程序初始化失败：数据库无法打开。\n\n" +
+                    "原因：" + error.Message + "\n\n" +
+                    "数据目录：\n" + dataDir + "\n\n" +
+                    "这通常是原生数据库组件缺失、或数据库文件被其他程序占用。\n" +
+                    "如果刚升级过版本，请先确认程序目录里带有「原生数据库组件」。";
+                primary = "打开数据目录";
+                secondary = "知道了";
+                break;
+
+            default:
+                detail =
+                    "程序初始化失败，账号列表、下载历史、收藏都无法加载。\n\n" +
+                    "原因：" + error.Message + "\n\n" +
+                    "数据目录：\n" + dataDir + "\n\n" +
+                    "这不是加密凭据的问题，清理凭据不会有帮助。\n" +
+                    "建议把上面的原因反馈给开发者，日志可在数据目录下的 diagnostic_logs 里找到。";
+                primary = "打开数据目录";
+                secondary = "知道了";
+                break;
+        }
+
+        int choice = Views.PromptDialog.ChooseWithPrimary(
+            "初始化失败", detail, 0, primary, secondary);
+
+        // 按钮语义随类别变化，不能再写死 choice==1 就是「打开目录」。
+        // 只有 Credential 类的主按钮才是「清理并重建」，其余两类的主按钮是「打开数据目录」。
+        if (kind != InitFailureKind.Credential)
+        {
+            if (choice == 0) OpenFolder(dataDir);
+            return;
+        }
+
+        if (choice == 1)
+        {
+            OpenFolder(dataDir);
+            return;
+        }
+
+        if (choice != 0) return;
+
+        // ---- 清理并重建 ----
+        try
+        {
+            if (File.Exists(keyPath)) File.Delete(keyPath);
+            await LogAsync("已删除损坏的加密凭据，正在重建…");
+        }
+        catch (Exception ex)
+        {
+            Views.PromptDialog.Alert("清理失败",
+                "无法删除凭据文件，可能被其它程序占用：\n\n" + ex.Message +
+                "\n\n请手动删除后重启程序：\n" + keyPath);
+            return;
+        }
+
+        if (retry)
+        {
+            await LogAsync("正在重试初始化…");
+            await InitializeAsync().ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>在资源管理器里打开（或定位到）某个路径。</summary>
+    private static void OpenFolder(string path)
+    {
+        try
+        {
+            // 目录直接打开；文件则选中它 —— 用户点「打开数据目录」时想看的
+            // 多半是目录里有哪些文件，所以统一打开目录更合适。
+            if (Directory.Exists(path))
+                Process.Start(new ProcessStartInfo("explorer.exe", "\"" + path + "\"")
+                { UseShellExecute = true });
+            else if (File.Exists(path))
+                Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"")
+                { UseShellExecute = true });
+            else
+                Process.Start(new ProcessStartInfo("explorer.exe",
+                    "\"" + Path.GetDirectoryName(path) + "\"") { UseShellExecute = true });
+        }
+        catch { /* 打不开就算了，不能因为这点事再抛一次 */ }
     }
 
     /// <summary>构建「账号」页的网盘列表（含登录状态）。</summary>
@@ -1747,7 +2078,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try { IsFavorited = _services?.Favorites.Exists(input) ?? false; }
         catch { IsFavorited = false; }
 
+        #if NET48
+        // net48 的 string.Split 没有单个 string 的重载，只有 char/char[]/string[]
+        ParsedKind = (content.Title ?? "").Split(new[] { " · " }, StringSplitOptions.None)[0];
+#else
         ParsedKind = (content.Title ?? "").Split(" · ")[0];
+#endif
         ParsedTitle = content.Title ?? "";
         int n = content.Items.Count;
         ParsedNote = n > 1
@@ -2741,9 +3077,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Headers = vm.RequestHeaders ?? new Dictionary<string, string>(),
                 Tuning = new DownloadTuning
                 {
-                    ReadBufferBytes = Math.Clamp(_settings.ReadBufferKb, 4, 4096) * 1024,
-                    PreemptFloorBps = Math.Clamp(_settings.PreemptFloorKb, 1, 10240) * 1024.0,
-                    PreemptMinAgeMs = Math.Clamp(_settings.PreemptAgeSec, 1, 600) * 1000.0,
+                    ReadBufferBytes = Math48.Clamp(_settings.ReadBufferKb, 4, 4096) * 1024,
+                    PreemptFloorBps = Math48.Clamp(_settings.PreemptFloorKb, 1, 10240) * 1024.0,
+                    PreemptMinAgeMs = Math48.Clamp(_settings.PreemptAgeSec, 1, 600) * 1000.0,
                 },
                 // 记下断点落点（可能在缓存目录）：删除任务时要靠它回收孤儿 part
                 OnPartPathResolved = p => vm.PartPath = p,
@@ -3010,21 +3346,40 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void BrowseCacheDirectory()
     {
+#if NET48
+        // net48 没有 Microsoft.Win32.OpenFolderDialog（.NET 8 新增），
+        // 用 Compat/FolderDialog.cs 里的 IFileOpenDialog 实现（界面一致）。
+        var dlg = new YunX.Desktop.Compat.FolderDialog
+        {
+            Title = "选择分片缓存目录（建议放 SSD）",
+        };
+        if (dlg.ShowDialog()) CacheDir = dlg.FolderName;
+#else
         var dlg = new Microsoft.Win32.OpenFolderDialog
         {
             Title = "选择分片缓存目录（建议放 SSD）",
         };
         if (dlg.ShowDialog() == true) CacheDir = dlg.FolderName;
+#endif
     }
 
     private void BrowseDirectory()
     {
+#if NET48
+        var dlg = new YunX.Desktop.Compat.FolderDialog
+        {
+            Title = "选择下载目录",
+            InitialDirectory = Directory.Exists(DownloadDir) ? DownloadDir : "",
+        };
+        if (dlg.ShowDialog())
+#else
         var dlg = new Microsoft.Win32.OpenFolderDialog
         {
             Title = "选择下载目录",
             InitialDirectory = Directory.Exists(DownloadDir) ? DownloadDir : "",
         };
         if (dlg.ShowDialog() == true)
+#endif
         {
             DownloadDir = dlg.FolderName;
             _settings.DownloadDir = dlg.FolderName;
@@ -3198,8 +3553,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private static string Hash(string text)
     {
-        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text));
-        return Convert.ToHexString(bytes, 0, 8);
+        var bytes = Hash48.Sha256(Encoding.UTF8.GetBytes(text));
+        return Helpers.ToHexString(bytes, 0, 8);
     }
 
     // ================= 任务持久化 =================
@@ -3676,7 +4031,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private int ResolveThreads(DownloadTaskViewModel vm)
     {
-        int global = Math.Clamp(_settings.Threads, 1, 32);
+        int global = Math48.Clamp(_settings.Threads, 1, 32);
         string? platform = vm.Platform
             ?? (vm.Url.Contains("github", StringComparison.OrdinalIgnoreCase) ? "github" : null);
 
@@ -3684,7 +4039,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         var map = _settings.ThreadsPerPlatform;
         if (map != null && map.TryGetValue(platform, out int per))
-            return Math.Clamp(per, 1, 32);
+            return Math48.Clamp(per, 1, 32);
 
         return global;
     }

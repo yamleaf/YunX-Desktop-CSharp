@@ -133,10 +133,10 @@ public sealed partial class MarkdownParser
             }
 
             // 引用
-            if (line.TrimStart().StartsWith('>'))
+            if (line.TrimStart().StartsWith(">", StringComparison.Ordinal))
             {
                 var sb = new StringBuilder();
-                while (i < lines.Length && lines[i].TrimStart().StartsWith('>'))
+                while (i < lines.Length && lines[i].TrimStart().StartsWith(">", StringComparison.Ordinal))
                 {
                     sb.AppendLine(lines[i].TrimStart().TrimStart('>').TrimStart());
                     i++;
@@ -231,7 +231,7 @@ public sealed partial class MarkdownParser
         if (FencePattern().IsMatch(line)) return true;
         if (HeadingPattern().IsMatch(line)) return true;
         if (RulePattern().IsMatch(line)) return true;
-        if (line.TrimStart().StartsWith('>')) return true;
+        if (line.TrimStart().StartsWith(">", StringComparison.Ordinal)) return true;
         if (ListPattern().IsMatch(line)) return true;
         if (line.TrimStart().StartsWith("<details", StringComparison.OrdinalIgnoreCase)) return true;
         if (line.Contains('|') && i + 1 < lines.Length && TableSeparatorPattern().IsMatch(lines[i + 1]))
@@ -246,8 +246,9 @@ public sealed partial class MarkdownParser
         var aligns = SplitRow(lines[start + 1])
             .Select(c => c.Trim() switch
             {
-                var s when s.StartsWith(':') && s.EndsWith(':') => "center",
-                var s when s.EndsWith(':') => "right",
+                var s when s.StartsWith(":", StringComparison.Ordinal) &&
+                   s.EndsWith(":", StringComparison.Ordinal) => "center",
+                var s when s.EndsWith(":", StringComparison.Ordinal) => "right",
                 _ => "left",
             })
             .ToList();
@@ -299,7 +300,7 @@ public sealed partial class MarkdownParser
         {
             Kind = MdBlockKind.List,
             OrderedList = ordered,
-            Text = string.Join('\n', items),
+            Text = string.Join("\n", items),
             Rows = items.Select(x => new List<string> { x }).ToList(),
         }, i - start);
     }
@@ -426,37 +427,125 @@ public sealed partial class MarkdownParser
 
     // ================= 正则 =================
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _fencePatternCache;
+    private static Regex FencePattern() =>
+        _fencePatternCache ??= new Regex(@"^```(\w*)|^~~~(\w*)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^```(\w*)|^~~~(\w*)")]
-    private static partial Regex FencePattern();
+        private static partial Regex FencePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _headingPatternCache;
+    private static Regex HeadingPattern() =>
+        _headingPatternCache ??= new Regex(@"^(#{1,6})\s+(.*)$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^(#{1,6})\s+(.*)$")]
-    private static partial Regex HeadingPattern();
+        private static partial Regex HeadingPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _rulePatternCache;
+    private static Regex RulePattern() =>
+        _rulePatternCache ??= new Regex(@"^\s*([-*_])\s*\1\s*\1[\s\1]*$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^\s*([-*_])\s*\1\s*\1[\s\1]*$")]
-    private static partial Regex RulePattern();
+        private static partial Regex RulePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _tableSeparatorPatternCache;
+    private static Regex TableSeparatorPattern() =>
+        _tableSeparatorPatternCache ??= new Regex(@"^\s*\|?[\s:|-]+\|[\s:|-]*$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^\s*\|?[\s:|-]+\|[\s:|-]*$")]
-    private static partial Regex TableSeparatorPattern();
+        private static partial Regex TableSeparatorPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _listPatternCache;
+    private static Regex ListPattern() =>
+        _listPatternCache ??= new Regex(@"^(\s*)([-*+]|\d+[.)])\s+(.*)$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^(\s*)([-*+]|\d+[.)])\s+(.*)$")]
-    private static partial Regex ListPattern();
+        private static partial Regex ListPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _standaloneImagePatternCache;
+    private static Regex StandaloneImagePattern() =>
+        _standaloneImagePatternCache ??= new Regex(@"^!\[([^\]]*)\]\(([^)\s]+)\)$", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"^!\[([^\]]*)\]\(([^)\s]+)\)$")]
-    private static partial Regex StandaloneImagePattern();
+        private static partial Regex StandaloneImagePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _inlineImagePatternCache;
+    private static Regex InlineImagePattern() =>
+        _inlineImagePatternCache ??= new Regex(@"!\[([^\]]*)\]\(([^)\s]+)\)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"!\[([^\]]*)\]\(([^)\s]+)\)")]
-    private static partial Regex InlineImagePattern();
+        private static partial Regex InlineImagePattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _inlineLinkPatternCache;
+    private static Regex InlineLinkPattern() =>
+        _inlineLinkPatternCache ??= new Regex(@"\[([^\]]+)\]\(([^)\s]+)\)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"\[([^\]]+)\]\(([^)\s]+)\)")]
-    private static partial Regex InlineLinkPattern();
+        private static partial Regex InlineLinkPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _summaryTagPatternCache;
+    private static Regex SummaryTagPattern() =>
+        _summaryTagPatternCache ??= new Regex(@"<summary>(.*?)</summary>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"<summary>(.*?)</summary>", RegexOptions.IgnoreCase)]
-    private static partial Regex SummaryTagPattern();
+        private static partial Regex SummaryTagPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _htmlTagPatternCache;
+    private static Regex HtmlTagPattern() =>
+        _htmlTagPatternCache ??= new Regex(@"</?(?:details|summary|div|p|br|img|a|b|i|code|pre|table|tr|td|th)[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"</?(?:details|summary|div|p|br|img|a|b|i|code|pre|table|tr|td|th)[^>]*>",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex HtmlTagPattern();
+            RegexOptions.IgnoreCase)]
+        private static partial Regex HtmlTagPattern();
+    #endif
 
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _relativeImagePatternCache;
+    private static Regex RelativeImagePattern() =>
+        _relativeImagePatternCache ??= new Regex(@"!\[([^\]]*)\]\((?!https?:|data:|//)([^)\s]+)\)", RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"!\[([^\]]*)\]\((?!https?:|data:|//)([^)\s]+)\)")]
-    private static partial Regex RelativeImagePattern();
+        private static partial Regex RelativeImagePattern();
+    #endif
 }

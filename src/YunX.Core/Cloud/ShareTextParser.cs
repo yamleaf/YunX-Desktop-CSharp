@@ -16,19 +16,43 @@ namespace YunX.Core.Cloud;
 public static partial class ShareTextParser
 {
     // 提取码：支持「提取码：abcd」「密码: abcd」「pwd=abcd」「提取碼 abcd」等写法
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _passcodePatternCache;
+    private static Regex PasscodePattern() =>
+        _passcodePatternCache ??= new Regex(@"(?:提取码|提取碼|访问码|訪問碼|密码|密碼|口令|pwd|passcode|password)\s*[:：=]?\s*([A-Za-z0-9]{3,8})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(
-        @"(?:提取码|提取碼|访问码|訪問碼|密码|密碼|口令|pwd|passcode|password)\s*[:：=]?\s*([A-Za-z0-9]{3,8})",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex PasscodePattern();
+            @"(?:提取码|提取碼|访问码|訪問碼|密码|密碼|口令|pwd|passcode|password)\s*[:：=]?\s*([A-Za-z0-9]{3,8})",
+            RegexOptions.IgnoreCase)]
+        private static partial Regex PasscodePattern();
+    #endif
 
     // 单独的 4 位提取码（很多平台固定 4 位，出现在链接后面）
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _bareCodePatternCache;
+    private static Regex BareCodePattern() =>
+        _bareCodePatternCache ??= new Regex(@"(?:^|\s)([A-Za-z0-9]{4})(?:\s|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"(?:^|\s)([A-Za-z0-9]{4})(?:\s|$)", RegexOptions.IgnoreCase)]
-    private static partial Regex BareCodePattern();
+        private static partial Regex BareCodePattern();
+    #endif
 
     // URL 提取
+    
+    #if NET48
+    // 源生成器在 net48 上不可用，改用惰性初始化的运行时 Regex
+    private static Regex? _urlPatternCache;
+    private static Regex UrlPattern() =>
+        _urlPatternCache ??= new Regex(@"https?://[^\s<>""'\u4e00-\u9fff，。、；：！？]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    #else
     [GeneratedRegex(@"https?://[^\s<>""'\u4e00-\u9fff，。、；：！？]+",
-        RegexOptions.IgnoreCase)]
-    private static partial Regex UrlPattern();
+            RegexOptions.IgnoreCase)]
+        private static partial Regex UrlPattern();
+    #endif
 
     /// <summary>取出文本中的第一个 URL；没有则返回 null。</summary>
     public static string? ExtractUrl(string input)

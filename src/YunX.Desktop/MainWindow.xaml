@@ -8,7 +8,7 @@
         Title="YunX Desktop"
         Icon="Assets/app.ico"
         Height="780" Width="1180" MinHeight="620" MinWidth="920"
-        Background="{StaticResource BgBrush}"
+        Background="{DynamicResource BgBrush}"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
@@ -27,7 +27,7 @@
         <vm:MainViewModel />
     </Window.DataContext>
 
-    <Border Background="{StaticResource WindowBackdrop}">
+    <Border Background="{DynamicResource WindowBackdrop}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="48" />
@@ -48,7 +48,7 @@
                                Margin="10,0,0,0" VerticalAlignment="Center" />
                     <Border Style="{StaticResource Badge}" Margin="9,0,0,0">
                         <TextBlock Text="C#" FontSize="10"
-                                   Foreground="{StaticResource TextMutedBrush}" />
+                                   Foreground="{DynamicResource TextMutedBrush}" />
                     </Border>
                 </StackPanel>
 
@@ -171,11 +171,11 @@
                                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                                 </StackPanel>
                                 <Border HorizontalAlignment="Right" CornerRadius="8"
-                                        Background="{StaticResource SurfaceTopBrush}"
+                                        Background="{DynamicResource SurfaceTopBrush}"
                                         Padding="6,1" VerticalAlignment="Center"
                                         Visibility="{Binding HasFavorites, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="{Binding Favorites.Count}" FontSize="10"
-                                               Foreground="{StaticResource TextMutedBrush}" FontWeight="SemiBold" />
+                                               Foreground="{DynamicResource TextMutedBrush}" FontWeight="SemiBold" />
                                 </Border>
                             </Grid>
                         </ToggleButton>
@@ -223,16 +223,16 @@
                         <StackPanel Orientation="Horizontal" Margin="8,0">
                             <Path Data="{StaticResource IconFolder}" Width="15" Height="15"
                                   Stretch="Uniform" VerticalAlignment="Center"
-                                  Fill="{StaticResource TextMutedBrush}" />
+                                  Fill="{DynamicResource TextMutedBrush}" />
                             <TextBlock Text="下载目录" FontSize="12" Margin="8,0,0,0"
                                        VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextMutedBrush}" />
+                                       Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
                     </Button>
                 </Grid>
 
                 <Border Grid.Column="0" Width="1" HorizontalAlignment="Right"
-                        Background="{StaticResource BorderBrush}" Margin="0,8,0,8" />
+                        Background="{DynamicResource BorderBrush}" Margin="0,8,0,8" />
 
                 <!-- ================= 内容区 ================= -->
                 <Grid Grid.Column="1">
@@ -277,10 +277,10 @@
                                     <StackPanel HorizontalAlignment="Center">
                                         <Path Data="{StaticResource IconStar}" Width="30" Height="30"
                                               Stretch="Uniform" HorizontalAlignment="Center"
-                                              Fill="{StaticResource TextDimBrush}" Opacity="0.5" />
+                                              Fill="{DynamicResource TextDimBrush}" Opacity="0.5" />
                                         <TextBlock Text="还没有收藏" FontSize="13" Margin="0,14,0,0"
                                                    HorizontalAlignment="Center"
-                                                   Foreground="{StaticResource TextBrush}" />
+                                                   Foreground="{DynamicResource TextBrush}" />
                                         <TextBlock Text="解析出结果后，点结果卡片上的「收藏」就会出现在这里。"
                                                    Style="{StaticResource CaptionText}"
                                                    Margin="0,7,0,0" HorizontalAlignment="Center" />
@@ -325,7 +325,7 @@
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock Text="{Binding DisplayLabel}"
                                                                            FontSize="13"
-                                                                           Foreground="{StaticResource TextBrush}"
+                                                                           Foreground="{DynamicResource TextBrush}"
                                                                            TextTrimming="CharacterEllipsis" />
                                                                 <!-- 有自定义名时标一下，让用户知道哪个是自己起的名 -->
                                                                 <Border Style="{StaticResource Badge}"
@@ -333,13 +333,13 @@
                                                                         Visibility="{Binding LabelCustom,
                                                                           Converter={StaticResource BoolToVis}}">
                                                                     <TextBlock Text="自定义" FontSize="9.5"
-                                                                               Foreground="{StaticResource TextMutedBrush}" />
+                                                                               Foreground="{DynamicResource TextMutedBrush}" />
                                                                 </Border>
                                                             </StackPanel>
                                                             <TextBlock Text="{Binding RawInput}"
                                                                        FontSize="10.5" Margin="0,4,0,0"
                                                                        TextTrimming="CharacterEllipsis"
-                                                                       Foreground="{StaticResource TextDimBrush}" />
+                                                                       Foreground="{DynamicResource TextDimBrush}" />
                                                         </StackPanel>
                                                     </Button>
 
@@ -405,7 +405,7 @@
                                                            Padding="16,0,0,0"
                                                            VerticalAlignment="Center"
                                                            FontSize="14"
-                                                           Foreground="{StaticResource TextDimBrush}"
+                                                           Foreground="{DynamicResource TextDimBrush}"
                                                            Visibility="{Binding InputText,
                                                              Converter={StaticResource EmptyToVis}}" />
                                             </Grid>
@@ -464,7 +464,7 @@
                                                 <Border Style="{StaticResource Badge}" Margin="10,0,0,0"
                                                         VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding ParsedKind}" FontSize="10.5"
-                                                               Foreground="{StaticResource TextMutedBrush}"
+                                                               Foreground="{DynamicResource TextMutedBrush}"
                                                                TextTrimming="CharacterEllipsis"
                                                                MaxWidth="160" />
                                                 </Border>
@@ -503,7 +503,7 @@
                                         <!-- ===== 仓库文件树（点「浏览仓库」展开） ===== -->
                                         <Border Margin="0,12,0,0" Padding="12"
                                                 CornerRadius="8"
-                                                Background="{StaticResource SurfaceHiBrush}"
+                                                Background="{DynamicResource SurfaceHiBrush}"
                                                 Visibility="{Binding BrowserOpen,
                                                   Converter={StaticResource BoolToVis}}">
                                             <StackPanel>
@@ -523,7 +523,7 @@
                                                                VerticalAlignment="Center"
                                                                Margin="10,0"
                                                                TextTrimming="CharacterEllipsis"
-                                                               Foreground="{StaticResource TextMutedBrush}" />
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
                                                     <Button Grid.Column="2" Style="{StaticResource GhostButton}"
                                                             Content="关闭" FontSize="11" Padding="8,3"
                                                             Command="{Binding BrowserCloseCommand}" />
@@ -553,7 +553,7 @@
                                                                               Stretch="Uniform"
                                                                               VerticalAlignment="Center"
                                                                               Data="{StaticResource IconFolder}"
-                                                                              Fill="{StaticResource TextMutedBrush}">
+                                                                              Fill="{DynamicResource TextMutedBrush}">
                                                                             <!-- 文件换成通用文档图标；目录保留文件夹。
                                                                                  用 Style 触发器而不是两套模板，避免重复整段布局。 -->
                                                                             <Path.Style>
@@ -574,7 +574,7 @@
                                                                         <TextBlock Grid.Column="2" Text="{Binding SizeText}"
                                                                                    FontSize="11"
                                                                                    VerticalAlignment="Center"
-                                                                                   Foreground="{StaticResource TextDimBrush}" />
+                                                                                   Foreground="{DynamicResource TextDimBrush}" />
                                                                     </Grid>
                                                                 </Button>
                                                             </DataTemplate>
@@ -587,7 +587,7 @@
                                         <!-- ===== README 预览（GFM 渲染） ===== -->
                                         <Border Margin="0,12,0,0" Padding="14"
                                                 CornerRadius="8"
-                                                Background="{StaticResource SurfaceHiBrush}"
+                                                Background="{DynamicResource SurfaceHiBrush}"
                                                 Visibility="{Binding ReadmeOpen,
                                                   Converter={StaticResource BoolToVis}}">
                                             <StackPanel>
@@ -603,7 +603,7 @@
 
                                                 <TextBlock Text="{Binding ReadmeError}"
                                                            FontSize="11.5"
-                                                           Foreground="{StaticResource ErrBrush}"
+                                                           Foreground="{DynamicResource ErrBrush}"
                                                            TextWrapping="Wrap" />
 
                                                 <ScrollViewer MaxHeight="380"
@@ -621,7 +621,7 @@
                                                                                    FontWeight="{Binding HeadingWeight}"
                                                                                    TextWrapping="Wrap" />
                                                                         <Border Height="1" Margin="0,6,0,0"
-                                                                                Background="{StaticResource BorderBrush}"
+                                                                                Background="{DynamicResource BorderBrush}"
                                                                                 Visibility="{Binding HeadingRuleVisibility}" />
                                                                     </StackPanel>
 
@@ -634,18 +634,18 @@
 
                                                                     <!-- 引用 -->
                                                                     <Border BorderThickness="3,0,0,0"
-                                                                            BorderBrush="{StaticResource BorderHiBrush}"
+                                                                            BorderBrush="{DynamicResource BorderHiBrush}"
                                                                             Padding="10,2,0,2"
                                                                             Visibility="{Binding IsQuote,
                                                                               Converter={StaticResource BoolToVis}}">
                                                                         <TextBlock TextWrapping="Wrap" LineHeight="20"
                                                                                    FontSize="12.5"
-                                                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                                                   Foreground="{DynamicResource TextMutedBrush}"
                                                                                    views:MdInlineText.Inlines="{Binding Inlines}" />
                                                                     </Border>
 
                                                                     <!-- 代码块 -->
-                                                                    <Border Background="{StaticResource SurfaceTopBrush}"
+                                                                    <Border Background="{DynamicResource SurfaceTopBrush}"
                                                                             CornerRadius="6" Padding="12,10"
                                                                             Visibility="{Binding IsCode,
                                                                               Converter={StaticResource BoolToVis}}">
@@ -653,7 +653,7 @@
                                                                             <TextBlock Text="{Binding Language}"
                                                                                        FontSize="10.5"
                                                                                        Margin="0,0,0,5"
-                                                                                       Foreground="{StaticResource TextDimBrush}"
+                                                                                       Foreground="{DynamicResource TextDimBrush}"
                                                                                        Visibility="{Binding LanguageVisibility}" />
                                                                             <TextBox Text="{Binding Text, Mode=OneWay}"
                                                                                      IsReadOnly="True"
@@ -678,7 +678,7 @@
                                                                         <TextBlock Grid.Column="0" Text="•"
                                                                                    FontSize="12.5" Margin="0,0,7,0"
                                                                                    VerticalAlignment="Top"
-                                                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                                                                   Foreground="{DynamicResource TextMutedBrush}" />
                                                                         <TextBlock Grid.Column="1" TextWrapping="Wrap"
                                                                                    LineHeight="20" FontSize="12.5"
                                                                                    views:MdInlineText.Inlines="{Binding Bullet}" />
@@ -686,7 +686,7 @@
 
                                                                     <!-- 表格：用只读的等宽化 Grid 简化呈现 -->
                                                                     <Border BorderThickness="1"
-                                                                            BorderBrush="{StaticResource BorderBrush}"
+                                                                            BorderBrush="{DynamicResource BorderBrush}"
                                                                             CornerRadius="5"
                                                                             Visibility="{Binding IsTable,
                                                                               Converter={StaticResource BoolToVis}}">
@@ -694,7 +694,7 @@
                                                                             <ItemsControl.ItemTemplate>
                                                                                 <DataTemplate>
                                                                                     <Border BorderThickness="0,0,0,1"
-                                                                                            BorderBrush="{StaticResource BorderBrush}"
+                                                                                            BorderBrush="{DynamicResource BorderBrush}"
                                                                                             Padding="10,6">
                                                                                         <ItemsControl ItemsSource="{Binding}">
                                                                                             <ItemsControl.ItemsPanel>
@@ -720,7 +720,7 @@
 
                                                                     <!-- 分隔线 -->
                                                                     <Border Height="1"
-                                                                            Background="{StaticResource BorderBrush}"
+                                                                            Background="{DynamicResource BorderBrush}"
                                                                             Visibility="{Binding IsRule,
                                                                               Converter={StaticResource BoolToVis}}" />
                                                                 </Grid>
@@ -813,7 +813,7 @@
                                                                                        Text="{Binding SizeText}"
                                                                                        FontSize="11"
                                                                                        VerticalAlignment="Center"
-                                                                                       Foreground="{StaticResource TextDimBrush}" />
+                                                                                       Foreground="{DynamicResource TextDimBrush}" />
                                                                         </Grid>
                                                                     </CheckBox>
 
@@ -857,7 +857,7 @@
                                                                                        FontSize="11"
                                                                                        Margin="10,0,0,0"
                                                                                        VerticalAlignment="Center"
-                                                                                       Foreground="{StaticResource TextDimBrush}" />
+                                                                                       Foreground="{DynamicResource TextDimBrush}" />
                                                                         </Grid>
                                                                     </Button>
                                                                 </Grid>
@@ -952,7 +952,7 @@
                                                        Padding="16,0,0,0"
                                                        VerticalAlignment="Center"
                                                        FontSize="14"
-                                                       Foreground="{StaticResource TextDimBrush}"
+                                                       Foreground="{DynamicResource TextDimBrush}"
                                                        Visibility="{Binding HistoryKeyword,
                                                          Converter={StaticResource EmptyToVis}}" />
                                         </Grid>
@@ -990,7 +990,7 @@
                                                                            TextTrimming="CharacterEllipsis" />
                                                                 <TextBlock FontSize="10.5" Margin="0,2,0,0"
                                                                            TextTrimming="CharacterEllipsis"
-                                                                           Foreground="{StaticResource TextDimBrush}">
+                                                                           Foreground="{DynamicResource TextDimBrush}">
                                                                     <Run Text="{Binding RawInput, Mode=OneWay}" />
                                                                     <Run Text=" · " />
                                                                     <Run Text="{Binding CreatedAt, StringFormat={}{0:MM-dd HH:mm}, Mode=OneWay}" />
@@ -1053,7 +1053,7 @@
                                     <TextBlock Style="{StaticResource CaptionText}"
                                                TextWrapping="Wrap" Margin="0,6,0,0"
                                                LineHeight="21"
-                                               Foreground="{StaticResource TextDimBrush}">
+                                               Foreground="{DynamicResource TextDimBrush}">
                                         提取码可以直接写在链接后面（「提取码：xxxx」），也可以把整段分享文本一起粘进来；
                                         中文口令也能识别。需要登录的平台请先去「账号」页授权。
                                     </TextBlock>
@@ -1102,15 +1102,15 @@
                                         Visibility="{Binding HasTasks,
                                           Converter={StaticResource InverseBoolToVis}}">
                                 <Border Width="54" Height="54" CornerRadius="16"
-                                        Background="{StaticResource SurfaceHiBrush}"
+                                        Background="{DynamicResource SurfaceHiBrush}"
                                         HorizontalAlignment="Center">
                                     <Path Data="{StaticResource IconDownload}" Width="24" Height="24"
-                                          Stretch="Uniform" Fill="{StaticResource TextDimBrush}"
+                                          Stretch="Uniform" Fill="{DynamicResource TextDimBrush}"
                                           HorizontalAlignment="Center"
                                           VerticalAlignment="Center" />
                                 </Border>
                                 <TextBlock Text="还没有下载任务" FontSize="13.5"
-                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
                                            HorizontalAlignment="Center" Margin="0,14,0,0" />
                                 <TextBlock Text="到「解析」页粘贴一个链接开始"
                                            Style="{StaticResource CaptionText}"
@@ -1148,7 +1148,7 @@
                                                         </Grid.ColumnDefinitions>
 
                                                         <Border Width="28" Height="28" CornerRadius="8"
-                                                                Background="{StaticResource SurfaceHiBrush}">
+                                                                Background="{DynamicResource SurfaceHiBrush}">
                                                             <Path Width="14" Height="14"
                                                                   Stretch="Uniform"
                                                                   HorizontalAlignment="Center"
@@ -1218,7 +1218,7 @@
 
                                                     <Grid Grid.Row="1" Height="6" Margin="39,11,0,0"
                                                           x:Name="BarHost">
-                                                        <Border Background="{StaticResource SurfaceTopBrush}"
+                                                        <Border Background="{DynamicResource SurfaceTopBrush}"
                                                                 CornerRadius="3" />
                                                         <Border HorizontalAlignment="Left" CornerRadius="3"
                                                                 Background="{Binding State,
@@ -1241,11 +1241,11 @@
                                                                          Converter={StaticResource StateToBrush}}" />
                                                             <TextBlock Text="{Binding ProgressText}"
                                                                        FontSize="11.5"
-                                                                       Foreground="{StaticResource TextDimBrush}"
+                                                                       Foreground="{DynamicResource TextDimBrush}"
                                                                        Margin="12,0,0,0" />
                                                             <TextBlock Text="{Binding Error}"
                                                                        FontSize="11.5"
-                                                                       Foreground="{StaticResource ErrBrush}"
+                                                                       Foreground="{DynamicResource ErrBrush}"
                                                                        Margin="12,0,0,0"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        MaxWidth="320"
@@ -1256,10 +1256,10 @@
                                                                     HorizontalAlignment="Right">
                                                             <TextBlock Text="{Binding SpeedText}"
                                                                        FontSize="11.5"
-                                                                       Foreground="{StaticResource TextMutedBrush}" />
+                                                                       Foreground="{DynamicResource TextMutedBrush}" />
                                                             <TextBlock Text="{Binding EtaText}"
                                                                        FontSize="11.5"
-                                                                       Foreground="{StaticResource TextDimBrush}"
+                                                                       Foreground="{DynamicResource TextDimBrush}"
                                                                        Margin="12,0,0,0" />
                                                         </StackPanel>
                                                     </Grid>
@@ -1275,7 +1275,7 @@
                                                                Text="{Binding TimeSummaryWithDir}"
                                                                FontSize="11"
                                                                Margin="39,6,0,0"
-                                                               Foreground="{StaticResource TextDimBrush}"
+                                                               Foreground="{DynamicResource TextDimBrush}"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Grid>
                                             </Border>
@@ -1285,10 +1285,16 @@
                             </ScrollViewer>
                         </Grid>
 
+                        <!--
+                          圆角描边用「外层纯色 + 内层 Margin=1」而不是 BorderThickness，
+                          否则 R=10 的弧段上 1px 环会被拉成斜向宽带，出现混色脏边。
+                          半径同步减 1：外层 10 / 内层 9。
+                        -->
                         <Border Grid.Row="2" Margin="34,0,34,14"
-                                Background="{StaticResource SurfaceBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="10">
+                                CornerRadius="10"
+                                Background="{DynamicResource BorderBrush}">
+                            <Border CornerRadius="9" Margin="1"
+                                    Background="{DynamicResource SurfaceBrush}">
                             <StackPanel>
                                 <Button Style="{StaticResource IconButton}"
                                         Width="Auto" Height="34"
@@ -1298,12 +1304,12 @@
                                     <Grid>
                                         <TextBlock Text="运行日志" FontSize="11.5"
                                                    VerticalAlignment="Center" Margin="6,0"
-                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
                                         <Path x:Name="LogChevron"
                                               Data="{StaticResource IconChevronDown}"
                                               Width="14" Height="14" Stretch="Uniform"
                                               HorizontalAlignment="Right" Margin="0,0,8,0"
-                                              Fill="{StaticResource TextDimBrush}"
+                                              Fill="{DynamicResource TextDimBrush}"
                                               VerticalAlignment="Center"
                                               RenderTransformOrigin="0.5,0.5">
                                             <Path.RenderTransform>
@@ -1324,13 +1330,14 @@
                                                 <TextBlock Text="{Binding}"
                                                            FontFamily="{StaticResource MonoFont}"
                                                            FontSize="11"
-                                                           Foreground="{StaticResource TextDimBrush}"
+                                                           Foreground="{DynamicResource TextDimBrush}"
                                                            TextWrapping="Wrap" Margin="0,1" />
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </ScrollViewer>
                             </StackPanel>
+                            </Border>
                         </Border>
                     </Grid>
 
@@ -1355,6 +1362,80 @@
                             <StackPanel Margin="34,0,34,26" MaxWidth="760"
                                         HorizontalAlignment="Center" Width="760">
 
+                                <!--
+                                    初始化失败条：最严重的一档。
+                                    失败时 _services 为 null，账号/历史/收藏全部不会加载，
+                                    界面表现为「一片空白」。必须显式告知原因 + 给恢复入口，
+                                    否则用户只会觉得程序坏了、又找不到地方处理。
+                                -->
+                                <!-- 外层纯色 = 描边；内层 Margin=1 = 填充（半径同步减 1） -->
+                                <Border CornerRadius="9" Margin="0,0,0,12"
+                                        Background="#66E2483D"
+                                        Visibility="{Binding InitFailed,
+                                          Converter={StaticResource BoolToVis}}">
+                                  <Border CornerRadius="8" Margin="1" Padding="14,12"
+                                          Background="#33E2483D">
+                                    <StackPanel>
+                                        <TextBlock Text="初始化失败，列表无法加载"
+                                                   FontSize="12.5" FontWeight="Medium"
+                                                   Foreground="#FFFF8A80" />
+                                        <TextBlock Text="{Binding InitFailureMessage}"
+                                                   FontSize="11.5" TextWrapping="Wrap"
+                                                   Margin="0,5,0,0" Foreground="#FFE8B4AF" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <!--
+                                                「清理加密凭据」只在失败**确实由加密引起**时出现。
+                                                上一版无条件显示，结果 SQLite 原生库缺失时也劝用户清凭据 ——
+                                                那条路治不好，还会白白丢掉网盘登录态。
+                                            -->
+                                            <Button Style="{StaticResource GhostButton}"
+                                                    Content="清理加密凭据并重建" FontSize="11.5"
+                                                    Padding="10,5" Margin="0,0,8,0"
+                                                    Command="{Binding ResetCredentialsCommand}"
+                                                    Visibility="{Binding InitFailureIsCredential,
+                                                      Converter={StaticResource BoolToVis}}" />
+                                            <Button Style="{StaticResource GhostButton}"
+                                                    Content="打开数据目录" FontSize="11.5"
+                                                    Padding="10,5" Margin="8,0,0,0"
+                                                    Command="{Binding OpenDbDirCommand}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                  </Border>
+                                </Border>
+
+                                <!--
+                                    凭证告警条。
+                                    「主密钥解不开 → 旧凭证全废」这件事必须让用户看见并且能处理：
+                                    之前它完全静默，用户只看到「账号全都退回未登录」，
+                                    不知道是自己没登录还是程序出了问题，也没有任何补救入口。
+                                    这里做成常驻条 + 明确操作，而不是一闪而过的浮层。
+                                -->
+                                <Border CornerRadius="9" Margin="0,0,0,12"
+                                        Background="#66F5A623"
+                                        Visibility="{Binding HasCredentialWarning,
+                                          Converter={StaticResource BoolToVis}}">
+                                  <Border CornerRadius="8" Margin="1" Padding="14,12"
+                                          Background="#33F5A623">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Path Data="{StaticResource IconGlobe}" Width="15" Height="15"
+                                              Stretch="Uniform" VerticalAlignment="Top" Margin="0,2,10,0"
+                                              Fill="#FFF5A623" />
+                                        <TextBlock Grid.Column="1" Text="{Binding CredentialWarning}"
+                                                   FontSize="12" TextWrapping="Wrap" LineHeight="18"
+                                                   Foreground="#FFF5C97A" />
+                                        <Button Grid.Column="2" Style="{StaticResource GhostButton}"
+                                                Content="清理并重建" FontSize="11.5" Padding="10,4"
+                                                Margin="10,0,0,0"
+                                                Command="{Binding ResetCredentialsCommand}" />
+                                    </Grid>
+                                  </Border>
+                                </Border>
+
                                 <Border Style="{StaticResource Card}" Padding="18">
                                     <ItemsControl ItemsSource="{Binding CloudAccounts}">
                                         <ItemsControl.ItemTemplate>
@@ -1369,12 +1450,12 @@
                                                     </Grid.ColumnDefinitions>
 
                                                     <Border Width="32" Height="32" CornerRadius="9"
-                                                            Background="{StaticResource SurfaceHiBrush}">
+                                                            Background="{DynamicResource SurfaceHiBrush}">
                                                         <Path Data="{StaticResource IconGlobe}" Width="16" Height="16"
                                                               Stretch="Uniform"
                                                               HorizontalAlignment="Center"
                                                               VerticalAlignment="Center"
-                                                              Fill="{StaticResource TextMutedBrush}" />
+                                                              Fill="{DynamicResource TextMutedBrush}" />
                                                     </Border>
 
                                                     <StackPanel Grid.Column="1" Margin="12,0,0,0"
@@ -1389,7 +1470,7 @@
                                                     <Border Grid.Column="2" Style="{StaticResource Badge}"
                                                             Margin="0,0,10,0">
                                                         <TextBlock Text="{Binding Status}" FontSize="10.5"
-                                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                                                   Foreground="{DynamicResource TextMutedBrush}" />
                                                     </Border>
 
                                                     <Button Grid.Column="3" Style="{StaticResource GhostButton}"
@@ -1631,7 +1712,7 @@
                                                        UpdateSourceTrigger=PropertyChanged}" />
                                         </Grid>
 
-                                        <Border Height="1" Background="{StaticResource BorderBrush}"
+                                        <Border Height="1" Background="{DynamicResource BorderBrush}"
                                                 Margin="0,0,0,14" />
 
                                         <CheckBox Style="{StaticResource ToggleSwitch}"
@@ -1818,7 +1899,7 @@
                                                       FontSize="12" />
                                         </Grid>
 
-                                        <Border Height="1" Background="{StaticResource BorderBrush}"
+                                        <Border Height="1" Background="{DynamicResource BorderBrush}"
                                                 Margin="0,0,0,14" />
 
                                         <CheckBox Style="{StaticResource ToggleSwitch}"
@@ -1846,7 +1927,7 @@
                                         -->
                                         <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
                                             <TextBlock Text="API 配额" FontSize="11.5"
-                                                       Foreground="{StaticResource TextDimBrush}"
+                                                       Foreground="{DynamicResource TextDimBrush}"
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding ApiQuotaText}" FontSize="11.5"
                                                        Margin="8,0,0,0" VerticalAlignment="Center"
@@ -1854,12 +1935,12 @@
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground"
-                                                                Value="{StaticResource TextMutedBrush}" />
+                                                                Value="{DynamicResource TextMutedBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding ApiQuotaLow}"
                                                                          Value="True">
                                                                 <Setter Property="Foreground"
-                                                                        Value="{StaticResource ErrBrush}" />
+                                                                        Value="{DynamicResource ErrBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -1868,7 +1949,7 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding TokenError}"
                                                    FontSize="11.5"
-                                                   Foreground="{StaticResource ErrBrush}"
+                                                   Foreground="{DynamicResource ErrBrush}"
                                                    TextWrapping="Wrap" Margin="0,7,0,0"
                                                    Visibility="{Binding TokenError,
                                                      Converter={StaticResource NullToVis}}" />
@@ -1962,7 +2043,7 @@
                                                      Text="{Binding CompletedHistoryLimit, UpdateSourceTrigger=PropertyChanged}" />
                                         </Grid>
 
-                                        <Border Height="1" Background="{StaticResource BorderBrush}"
+                                        <Border Height="1" Background="{DynamicResource BorderBrush}"
                                                 Margin="0,0,0,12" />
 
                                         <CheckBox Style="{StaticResource ToggleSwitch}"
@@ -2010,7 +2091,7 @@
                                                    Visibility="{Binding GopeedInstallText,
                                                      Converter={StaticResource NotEmptyToVis}}" />
 
-                                        <Border Height="1" Background="{StaticResource BorderBrush}"
+                                        <Border Height="1" Background="{DynamicResource BorderBrush}"
                                                 Margin="0,12,0,10" />
 
                                         <TextBlock Style="{StaticResource CaptionText}"
@@ -2055,13 +2136,17 @@
                         不用模态弹窗打断用户：复制链接是高频动作，
                         每次都弹窗会让人烦。做成可点可忽略的浮层。
                     -->
+                    <!--
+                      圆角描边：外层纯色 + 内层 Margin=1（半径 10 → 9），
+                      不用 BorderThickness（弧段上 1px 环会被拉成斜向宽带，产生混色脏边）。
+                      x:Name / Effect / RenderTransform 都留在**外层**，
+                      因为代码里对 ClipboardHintCard 做的是整体透明度动画。
+                    -->
                     <Border x:Name="ClipboardHintCard"
                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
                             Margin="0,0,28,22" MaxWidth="440"
-                            Background="{StaticResource SurfaceTopBrush}"
-                            BorderBrush="{StaticResource BorderHiBrush}"
-                            BorderThickness="1" CornerRadius="10"
-                            Padding="14,11"
+                            CornerRadius="10"
+                            Background="{DynamicResource BorderHiBrush}"
                             Visibility="{Binding ClipboardHintVisible,
                               Converter={StaticResource BoolToVis}}"
                             Panel.ZIndex="10">
@@ -2073,6 +2158,9 @@
                             <TranslateTransform x:Name="HintTransform" Y="0" />
                         </Border.RenderTransform>
 
+                        <Border CornerRadius="9" Margin="1"
+                                Background="{DynamicResource SurfaceTopBrush}"
+                                Padding="14,11">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -2088,7 +2176,7 @@
                             <StackPanel Grid.Column="1" Margin="10,0,10,0"
                                         VerticalAlignment="Center">
                                 <TextBlock Text="剪贴板里有链接" FontSize="12" FontWeight="Medium"
-                                           Foreground="{StaticResource TextBrush}" />
+                                           Foreground="{DynamicResource TextBrush}" />
                                 <TextBlock Text="{Binding ClipboardHintText}"
                                            Style="{StaticResource CaptionText}"
                                            TextTrimming="CharacterEllipsis" MaxWidth="260"
@@ -2106,9 +2194,10 @@
                                 <Path Data="{StaticResource IconClose}" Width="9" Height="9"
                                       Stretch="Uniform" HorizontalAlignment="Center"
                                       VerticalAlignment="Center"
-                                      Fill="{StaticResource TextDimBrush}" />
+                                      Fill="{DynamicResource TextDimBrush}" />
                             </Button>
                         </Grid>
+                        </Border>
                     </Border>
                 </Grid>
                 <!--
@@ -2124,22 +2213,25 @@
                       Background="#8E0B0E13"
                       Visibility="{Binding ShowParseOverlay,
                         Converter={StaticResource BoolToVis}}">
-                    <Border Background="{StaticResource SurfaceBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="12"
-                            Padding="26,22" MinWidth="240"
+                    <!-- 圆角描边：外层纯色 + 内层 Margin=1（R12 → 内层 R11） -->
+                    <Border CornerRadius="12"
+                            Background="{DynamicResource BorderBrush}"
+                            Padding="0" MinWidth="240"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center">
                         <Border.Effect>
                             <DropShadowEffect BlurRadius="26" ShadowDepth="0"
                                               Opacity="0.55" Color="Black" />
                         </Border.Effect>
+                        <Border CornerRadius="11" Margin="1"
+                                Background="{DynamicResource SurfaceBrush}"
+                                Padding="26,22">
                         <StackPanel Orientation="Horizontal">
                             <Grid Style="{StaticResource BusyRing}" VerticalAlignment="Center">
                                 <!-- 底环：整圈暗色，让缺口环有参照 -->
                                 <Ellipse Stroke="#2A303C" StrokeThickness="3" />
                                 <!-- 缺口环：只画约 1/4 圈，配合旋转就是转圈 -->
-                                <Ellipse Stroke="{StaticResource AccentBrush}"
+                                <Ellipse Stroke="{DynamicResource AccentBrush}"
                                          StrokeThickness="3"
                                          StrokeDashArray="6 18"
                                          StrokeStartLineCap="Round"
@@ -2161,13 +2253,14 @@
                                            MaxWidth="320" />
                             </StackPanel>
                         </StackPanel>
+                        </Border>
                     </Border>
                 </Grid>
             </Grid>
 
             <!-- ================= 状态栏 ================= -->
             <Grid Grid.Row="2" Height="34">
-                <Border Background="#0E1117" BorderBrush="{StaticResource BorderBrush}"
+                <Border Background="#0E1117" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="0,1,0,0" />
                 <Grid Margin="18,0">
                     <Grid.ColumnDefinitions>
@@ -2193,7 +2286,7 @@
                           HorizontalAlignment="Right"
                           Visibility="{Binding HasTasks,
                             Converter={StaticResource BoolToVis}}">
-                        <Border Background="{StaticResource SurfaceTopBrush}" CornerRadius="2" />
+                        <Border Background="{DynamicResource SurfaceTopBrush}" CornerRadius="2" />
                         <Border HorizontalAlignment="Left" CornerRadius="2"
                                 Background="{DynamicResource AccentBrush}">
                             <Border.Width>

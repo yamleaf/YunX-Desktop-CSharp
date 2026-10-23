@@ -265,7 +265,12 @@ internal static class UiSelfTest
     private static void DumpLog(MainViewModel vm)
     {
         Emit("  --- 运行日志 ---");
+        #if NET48
+        // net48 的 Enumerable 没有 TakeLast（.NET Core 2.0+ 才有）
+        foreach (var line in vm.LogLines.Skip(Math.Max(0, vm.LogLines.Count - 18)))
+#else
         foreach (var line in vm.LogLines.TakeLast(18))
+#endif
             Emit("  " + line);
     }
 }
